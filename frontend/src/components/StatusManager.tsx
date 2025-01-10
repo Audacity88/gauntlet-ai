@@ -1,31 +1,25 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabaseClient'
 
-type Status = 'online' | 'offline' | 'away' | 'busy'
+type Status = 'ONLINE' | 'OFFLINE' | 'AWAY' | 'BUSY'
 
 export function StatusManager() {
-  const [status, setStatus] = useState<Status>('online')
+  const [status, setStatus] = useState<Status>('ONLINE')
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    getCurrentStatus().then(() => {
-      // Update last_seen every minute
-      const interval = setInterval(() => {
-        updateLastSeen()
-      }, 60000)
+    getCurrentStatus()
 
-      // Set offline on page unload
-      const handleUnload = () => {
-        updateStatus('offline')
-      }
-      window.addEventListener('beforeunload', handleUnload)
+    // Set offline on page unload
+    const handleUnload = () => {
+      updateStatus('OFFLINE')
+    }
+    window.addEventListener('beforeunload', handleUnload)
 
-      return () => {
-        clearInterval(interval)
-        window.removeEventListener('beforeunload', handleUnload)
-        updateStatus('offline')
-      }
-    })
+    return () => {
+      window.removeEventListener('beforeunload', handleUnload)
+      updateStatus('OFFLINE')
+    }
   }, [])
 
   async function getCurrentStatus() {
@@ -39,7 +33,11 @@ export function StatusManager() {
         .eq('id', user.id)
         .single()
 
-      if (error) throw error
+      if (error) {
+        console.error('Error fetching status:', error)
+        return
+      }
+      
       if (data?.status) {
         setStatus(data.status as Status)
       }
@@ -55,31 +53,20 @@ export function StatusManager() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
 
-      await supabase
-        .from('profiles')
-        .update({ 
-          status: newStatus,
-          last_seen: new Date().toISOString()
+      const { error } = await supabase
+        .rpc('update_user_status', {
+          p_user_id: user.id,
+          p_status: newStatus
         })
-        .eq('id', user.id)
+
+      if (error) {
+        console.error('Error updating status:', error)
+        return
+      }
 
       setStatus(newStatus)
     } catch (error) {
       console.error('Error updating status:', error)
-    }
-  }
-
-  async function updateLastSeen() {
-    try {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) return
-
-      await supabase
-        .from('profiles')
-        .update({ last_seen: new Date().toISOString() })
-        .eq('id', user.id)
-    } catch (error) {
-      console.error('Error updating last_seen:', error)
     }
   }
 
@@ -97,11 +84,12 @@ export function StatusManager() {
         value={status}
         onChange={(e) => updateStatus(e.target.value as Status)}
         className="bg-indigo-700 text-white text-sm rounded-md border-indigo-600 focus:ring-2 focus:ring-indigo-500"
+        aria-label="Set your status"
       >
-        <option value="online">🟢 Online</option>
-        <option value="away">🟡 Away</option>
-        <option value="busy">🔴 Busy</option>
-        <option value="offline">⚫ Offline</option>
+        <option value="ONLINE">🟢 Online</option>
+        <option value="AWAY">🟡 Away</option>
+        <option value="BUSY">🔴 Busy</option>
+        <option value="OFFLINE">⚫ Offline</option>
       </select>
     </div>
   )

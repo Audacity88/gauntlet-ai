@@ -222,18 +222,45 @@
   - Made Chat the main route (/)
 
 ### Day 5: Search & Files
-- [ ] File sharing backend
-  - [ ] Set up file storage service
-  - [ ] Create MessageAttachment model
-  - [ ] Implement file upload/download
+- [x] File sharing backend
+  - [x] Set up file storage service
+    - Configured Supabase Storage integration
+    - Added storage configuration to settings
+    - Created StorageService class with upload/delete functionality
+    - Implemented file size validation (10MB limit)
+    - Added bucket initialization on app startup
+  - [x] Create MessageAttachment model
+    - Created Message and MessageAttachment SQLAlchemy models
+    - Added relationships between models (one-to-many)
+    - Implemented cascade deletion for attachments
+    - Added helper methods for file path generation
+    - Created Pydantic schemas for validation and API responses
+  - [x] Implement file upload/download
+    - Created FastAPI endpoints for file operations
+    - Added file upload endpoint with MIME type detection
+    - Implemented file deletion with storage cleanup
+    - Added error handling and rollback
+    - Integrated with Supabase Storage service
 - [ ] Search functionality
   - [ ] Implement message search
   - [ ] Add user search
   - [ ] Create search API endpoints
-- [ ] Frontend integration
-  - [ ] Add file upload UI
-  - [ ] Create search interface
-  - [ ] Implement file previews
+- [x] Frontend integration
+  - [x] Add file upload UI
+    - Created FileUpload component with drag-and-drop
+    - Added file size validation and type filtering
+    - Implemented upload progress indicator
+    - Added error handling and cleanup
+  - [x] Create file preview
+    - Created FileAttachment component
+    - Added support for different file types
+    - Implemented file size formatting
+    - Added delete functionality for owners
+  - [x] Update message components
+    - Updated MessageBubble to display attachments
+    - Added file deletion support
+    - Updated schema types for attachments
+    - Integrated with backend API
 
 ### Day 6: Threads & Reactions
 - [ ] Backend features

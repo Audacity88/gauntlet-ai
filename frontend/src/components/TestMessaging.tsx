@@ -5,7 +5,7 @@ import { supabase } from '../lib/supabaseClient'
 
 export function TestMessaging() {
   const { user } = useAuth()
-  const [channelId, setChannelId] = useState<string | null>(null)
+  const [channelId, setChannelId] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   // Create a test channel on component mount
@@ -18,7 +18,7 @@ export function TestMessaging() {
         const { data: existingChannels, error: searchError } = await supabase
           .from('channels')
           .select('*')
-          .eq('name', 'test-channel')
+          .eq('slug', 'test-channel')
           .eq('created_by', user.id)
           .limit(1)
 
@@ -31,9 +31,7 @@ export function TestMessaging() {
           const { data: newChannel, error: channelError } = await supabase
             .from('channels')
             .insert({
-              name: 'test-channel',
-              description: 'Channel for testing messaging features',
-              is_private: false,
+              slug: 'test-channel',
               created_by: user.id
             })
             .select()
@@ -45,47 +43,6 @@ export function TestMessaging() {
         } else {
           console.log('✅ Found existing test channel:', channel)
         }
-
-        // Check existing membership
-        const { data: existingMember, error: memberCheckError } = await supabase
-          .from('channel_members')
-          .select('*')
-          .eq('channel_id', channel.id)
-          .eq('user_id', user.id)
-          .single()
-
-        if (memberCheckError && memberCheckError.code !== 'PGRST116') { // PGRST116 is "no rows returned"
-          throw memberCheckError
-        }
-
-        if (!existingMember) {
-          // Join channel
-          const { data: member, error: memberError } = await supabase
-            .from('channel_members')
-            .insert({
-              channel_id: channel.id,
-              user_id: user.id,
-              role: 'admin'
-            })
-            .select()
-            .single()
-
-          if (memberError) throw memberError
-          console.log('✅ Joined test channel:', member)
-        } else {
-          console.log('✅ Already a member of test channel:', existingMember)
-        }
-
-        // Final verification
-        const { data: membership, error: verifyError } = await supabase
-          .from('channel_members')
-          .select('*')
-          .eq('channel_id', channel.id)
-          .eq('user_id', user.id)
-          .single()
-
-        if (verifyError) throw verifyError
-        console.log('✅ Verified channel membership:', membership)
 
         setChannelId(channel.id)
 
@@ -99,7 +56,6 @@ export function TestMessaging() {
 
     // Cleanup function
     return () => {
-      // We don't delete the channel on unmount because other users might be using it
       setChannelId(null)
     }
   }, [user])
@@ -130,7 +86,7 @@ export function TestMessaging() {
           </p>
           <ul className="text-sm text-gray-500 list-disc list-inside">
             <li>Send a message with markdown: *bold*, _italic_, `code`, [link](url)</li>
-            <li>Hover over a message to add reactions or edit (your messages)</li>
+            <li>Hover over a message to edit (your messages)</li>
             <li>Send multiple messages to test history loading</li>
             <li>Test real-time updates in another browser window</li>
           </ul>

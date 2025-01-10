@@ -83,4 +83,55 @@ CREATE TRIGGER update_direct_messages_updated_at
 
 -- Enable Realtime
 ALTER PUBLICATION supabase_realtime ADD TABLE direct_message_channels;
-ALTER PUBLICATION supabase_realtime ADD TABLE direct_messages; 
+ALTER PUBLICATION supabase_realtime ADD TABLE direct_messages;
+
+-- Function to send a DM and update channel timestamp in one transaction
+CREATE OR REPLACE FUNCTION send_direct_message(
+  p_channel_id UUID,
+  p_user_id UUID,
+  p_profile_id UUID,
+  p_content TEXT
+) RETURNS direct_messages AS $$
+DECLARE
+  v_message direct_messages;
+BEGIN
+  -- Insert the message
+  INSERT INTO direct_messages (
+    channel_id,
+    user_id,
+    profile_id,
+    content
+  ) VALUES (
+    p_channel_id,
+    p_user_id,
+    p_profile_id,
+    p_content
+  )
+  RETURNING * INTO v_message;
+
+  -- Update channel timestamp
+  UPDATE direct_message_channels
+  SET updated_at = NOW()
+  WHERE id = p_channel_id;
+
+  RETURN v_message;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Add indexes for performance
+CREATE INDEX IF NOT EXISTS idx_messages_channel_id ON messages (channel_id);
+CREATE INDEX IF NOT EXISTS idx_messages_user_id ON messages (user_id);
+CREATE INDEX IF NOT EXISTS idx_messages_inserted_at ON messages (inserted_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_direct_messages_channel_id ON direct_messages (channel_id);
+CREATE INDEX IF NOT EXISTS idx_direct_messages_user_id ON direct_messages (user_id);
+CREATE INDEX IF NOT EXISTS idx_direct_messages_created_at ON direct_messages (created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_direct_message_members_channel_user ON direct_message_members (channel_id, user_id);
+CREATE INDEX IF NOT EXISTS idx_direct_message_members_user_id ON direct_message_members (user_id);
+
+-- Enable RLS
+ALTER TABLE messages ENABLE ROW LEVEL SECURITY;
+ALTER TABLE direct_messages ENABLE ROW LEVEL SECURITY;
+ALTER TABLE direct_message_members ENABLE ROW LEVEL SECURITY;
+ALTER TABLE direct_message_channels ENABLE ROW LEVEL SECURITY; 

@@ -22,20 +22,45 @@ export function Onboarding({ onComplete }: OnboardingProps) {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) throw new Error('No user found')
 
-      const { error } = await supabase
+      console.log('Creating user profile for:', user.id)
+
+      // First create/update the profile
+      const { error: upsertError } = await supabase
         .from('profiles')
         .upsert({
           id: user.id,
           username,
-          full_name: fullName,
-          updated_at: new Date().toISOString(),
+          full_name: fullName
         })
 
-      if (error) throw error
+      if (upsertError) {
+        console.error('Error creating user:', upsertError)
+        throw upsertError
+      }
+
+      // Then fetch the created profile
+      const { data, error: fetchError } = await supabase
+        .from('profiles')
+        .select('id, username, full_name')
+        .filter('id', 'eq', user.id)
+        .single()
+
+      if (fetchError) {
+        console.error('Error fetching created profile:', fetchError)
+        throw fetchError
+      }
+
+      console.log('User profile created:', data)
       
+      // Call onComplete first
       onComplete()
-      navigate('/')
+      
+      // Then navigate
+      console.log('Navigating to home...')
+      navigate('/', { replace: true })
+      
     } catch (err: any) {
+      console.error('Onboarding error:', err)
       setError(err.message)
     } finally {
       setLoading(false)

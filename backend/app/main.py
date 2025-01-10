@@ -1,23 +1,38 @@
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy.orm import Session
-from app.core.database import get_db
 
-app = FastAPI(title="ChatGenius API")
+from app.core.database import get_db, engine
+from app.core.config import settings
+from app.models.base import Base
+from app.models.user import User, Profile  # Import User and Profile models first
+from app.models.channel import Channel, ChannelMember  # Import Channel models
+from app.models.direct_message import (  # Import DirectMessage models
+    DirectMessageChannel,
+    DirectMessageMember,
+    DirectMessage,
+    DirectMessageAttachment
+)
+from app.models.message import Message, MessageAttachment  # Then dependent models
+from app.api.api import api_router  # Import the API router
+
+# Create FastAPI app
+app = FastAPI()
 
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=["http://localhost:3000"],  # Frontend URL
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-@app.get("/")
-async def root(db: Session = Depends(get_db)):
-    return {"message": "Welcome to ChatGenius API"}
+# Create database tables
+Base.metadata.create_all(bind=engine)
 
-# Add this to create tables on startup
-from app.models.base import Base, engine
-Base.metadata.create_all(bind=engine) 
+# Mount API routes
+app.include_router(api_router)
+
+@app.get("/")
+async def root():
+    return {"message": "Welcome to the Slack Clone API"} 

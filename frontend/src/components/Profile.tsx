@@ -22,7 +22,7 @@ export function Profile() {
           .from('profiles')
           .select('username, full_name')
           .eq('id', user.id)
-          .single()
+          .maybeSingle()
 
         if (error) throw error
         if (data) {
@@ -48,12 +48,13 @@ export function Profile() {
         id: user.id,
         username,
         full_name: fullName,
-        updated_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
       }
 
       const { error } = await supabase
         .from('profiles')
         .upsert(updates)
+        .eq('id', user.id)
 
       if (error) throw error
       setEditing(false)

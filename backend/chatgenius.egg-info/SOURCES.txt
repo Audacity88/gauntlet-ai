@@ -1,0 +1,6 @@
+setup.py
+chatgenius.egg-info/PKG-INFO
+chatgenius.egg-info/SOURCES.txt
+chatgenius.egg-info/dependency_links.txt
+chatgenius.egg-info/requires.txt
+chatgenius.egg-info/top_level.txt

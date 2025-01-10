@@ -1,169 +1,165 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabaseClient'
-
-interface DatabaseChannel {
-  id: string
-  created_at: string
-  updated_at: string
-  members: Array<{
-    user_id: string
-    last_read_at: string
-    profile: {
-      username: string
-      full_name: string | null
-      avatar_url: string | null
-    }
-  }>
-}
-
-export interface DirectMessageChannel extends DatabaseChannel {
-  last_message?: {
-    content: string
-    created_at: string
-  }
-  unread_count: number
-}
+import { DirectMessageChannelWithMembers, DirectMessage} from '../types/schema'
+import { useAuth } from '../hooks/useAuth'
+import { RealtimePostgresChangesPayload } from '@supabase/supabase-js'
 
 export function useDirectMessages() {
-  const [channels, setChannels] = useState<DirectMessageChannel[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+  const [channels, setChannels] = useState<DirectMessageChannelWithMembers[]>([])
+  const [isLoading, setLoading] = useState(true)
   const [error, setError] = useState<Error | null>(null)
+  const { user } = useAuth()
+  const updateTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
-  // Load DM channels on mount
   useEffect(() => {
+    if (!user) return
+
     loadChannels()
     
-    // Subscribe to new messages
+    // Subscribe to new messages and channel updates
     const channel = supabase
-      .channel('direct_messages')
+      .channel('direct_messages_updates')
       .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'direct_messages' },
-        (payload) => {
-          console.log('New message:', payload)
-          loadChannels() // Reload to get updated unread counts and last message
+        'postgres_changes' as const,
+        { 
+          event: '*', 
+          schema: 'public', 
+          table: 'direct_messages'
+        },
+        async (payload: RealtimePostgresChangesPayload<DirectMessage>) => {
+          console.log('New DM message:', payload)
+          
+          // Get the channel ID from the message
+          const channelId = (payload.new as DirectMessage)?.channel_id
+          if (!channelId) return
+
+          // Get the channel from local state
+          const channel = channels.find(ch => ch.id === channelId)
+          if (!channel) return
+
+          // Update the channel with the new message directly from the payload
+          setChannels(prev => prev.map(ch => {
+            if (ch.id === channelId) {
+              // Calculate unread count locally
+              const lastReadAt = ch.members.find(m => m.user_id === user.id)?.last_read_at || ''
+              const newMessage = payload.new
+              const isUnread = !lastReadAt || (newMessage && 'created_at' in newMessage && newMessage.created_at > lastReadAt)
+              
+              return {
+                ...ch,
+                last_message: newMessage as DirectMessage,
+                unread_count: isUnread ? (ch.unread_count || 0) + 1 : ch.unread_count || 0
+              }
+            }
+            return ch
+          }))
         }
       )
-      .subscribe()
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'direct_message_channels'
+        },
+        (payload) => {
+          console.log('DM channel updated:', payload)
+          // Only reload channels for structural changes
+          if (payload.eventType === 'INSERT' || payload.eventType === 'DELETE') {
+            loadChannels()
+          }
+        }
+      )
+      .subscribe((status) => {
+        console.log('DM subscription status:', status)
+      })
 
     return () => {
+      console.log('Cleaning up DM subscriptions')
       channel.unsubscribe()
     }
-  }, [])
+  }, [user])
 
   const loadChannels = async () => {
     try {
-      setIsLoading(true)
+      setLoading(true)
       setError(null)
 
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) throw new Error('No authenticated user')
-
-      // First get all DM channels where user is a member
-      const { data: memberChannels, error: memberError } = await supabase
-        .from('direct_message_members')
-        .select('channel_id')
-        .eq('user_id', user.id)
-
-      if (memberError) {
-        console.error('Error loading DM memberships:', memberError)
-        throw memberError
-      }
-
-      if (!memberChannels?.length) {
+      if (!user) {
         setChannels([])
         return
       }
 
-      // Then get the channels and their members
-      const { data: rawChannels, error: channelsError } = await supabase
-        .from('direct_message_channels')
-        .select(`
-          id,
-          created_at,
-          updated_at,
-          members:direct_message_members(
-            user_id,
-            last_read_at,
-            profiles:profiles(
-              username,
-              full_name,
-              avatar_url
-            )
-          )
-        `)
-        .in('id', memberChannels.map(m => m.channel_id))
-        .order('updated_at', { ascending: false })
+      // Use the new simplified function to get all channel data
+      const { data: channelData, error: channelsError } = await supabase
+        .rpc('get_dm_channels_for_user', {
+          user_uuid: user.id
+        })
 
       if (channelsError) {
-        console.error('Supabase error loading DM channels:', channelsError)
+        console.error('Error loading DM channels:', channelsError)
         throw channelsError
       }
 
-      // Transform the raw data to match our types
-      const channels = rawChannels as unknown as DatabaseChannel[]
-
-      // Then for each channel, get the last message and unread count
-      const channelsWithMessages = await Promise.all(
-        channels.map(async (channel) => {
-          // Get last message
-          const { data: messages, error: messagesError } = await supabase
-            .from('direct_messages')
-            .select('content, created_at')
-            .eq('channel_id', channel.id)
-            .order('created_at', { ascending: false })
-            .limit(1)
-
-          if (messagesError) {
-            console.error('Error fetching messages for channel', channel.id, ':', messagesError)
+      // Transform the data into the expected format
+      const formattedChannels = channelData.map(ch => ({
+        id: ch.channel_id,
+        created_at: ch.last_message_at || new Date().toISOString(),
+        updated_at: ch.last_message_at || new Date().toISOString(),
+        members: [
+          {
+            id: `${ch.channel_id}-${user.id}`,
+            channel_id: ch.channel_id,
+            user_id: user.id,
+            profile_id: user.id,
+            last_read_at: ch.last_read_at,
+            created_at: ch.last_message_at || new Date().toISOString(),
+            user: {
+              id: user.id,
+              username: user.email,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString()
+            }
+          },
+          {
+            id: `${ch.channel_id}-${ch.other_user_id}`,
+            channel_id: ch.channel_id,
+            user_id: ch.other_user_id,
+            profile_id: ch.other_profile_id,
+            last_read_at: null,
+            created_at: ch.last_message_at || new Date().toISOString(),
+            user: {
+              id: ch.other_profile_id,
+              username: ch.other_username,
+              full_name: ch.other_full_name,
+              avatar_url: ch.other_avatar_url,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString()
+            }
           }
+        ],
+        last_message: ch.last_message_content ? {
+          id: 'temp',
+          channel_id: ch.channel_id,
+          content: ch.last_message_content,
+          created_at: ch.last_message_at || new Date().toISOString(),
+          updated_at: ch.last_message_at || new Date().toISOString()
+        } : undefined,
+        unread_count: ch.unread_count
+      }))
 
-          // Get unread count
-          const { count, error: countError } = await supabase
-            .from('direct_messages')
-            .select('id', { count: 'exact', head: true })
-            .eq('channel_id', channel.id)
-            .gt('created_at', channel.members.find(m => m.user_id === user.id)?.last_read_at || '')
-
-          if (countError) {
-            console.error('Error fetching unread count for channel', channel.id, ':', countError)
-          }
-
-          const result: DirectMessageChannel = {
-            ...channel,
-            last_message: messages?.[0],
-            unread_count: count || 0
-          }
-
-          return result
-        })
-      )
-
-      setChannels(channelsWithMessages)
+      setChannels(formattedChannels)
     } catch (err) {
       console.error('Failed to load DM channels:', err)
       setError(err instanceof Error ? err : new Error('Failed to load DM channels'))
     } finally {
-      setIsLoading(false)
+      setLoading(false)
     }
   }
 
   const createDirectMessage = async (otherUsername: string) => {
     try {
-      const { data: { user } } = await supabase.auth.getUser()
       if (!user) throw new Error('No authenticated user')
-
-      // Get current user's profile using auth.uid()
-      const { data: currentProfile, error: currentProfileError } = await supabase
-        .from('profiles')
-        .select('id, username')
-        .eq('id', user.id)
-        .single()
-
-      if (currentProfileError || !currentProfile) {
-        console.error('Error finding current user profile:', currentProfileError)
-        throw new Error('Current user profile not found')
-      }
 
       // Get the other user's profile from their username
       const { data: otherProfile, error: userError } = await supabase
@@ -177,48 +173,73 @@ export function useDirectMessages() {
         throw new Error('User not found')
       }
 
-      // Use RPC to find or create DM channel
-      const { data: result, error: rpcError } = await supabase
+      // Get our own profile
+      const { data: myProfile, error: myProfileError } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('id', user.id)
+        .single()
+
+      if (myProfileError || !myProfile) {
+        console.error('Error finding own profile:', myProfileError)
+        throw new Error('Profile not found')
+      }
+
+      // Use the simplified function to find or create DM channel
+      const { data: channelId, error: rpcError } = await supabase
         .rpc('find_or_create_dm_channel', {
-          user1_id: user.id,
-          user2_id: otherProfile.id,
-          user1_profile_id: currentProfile.id,
-          user2_profile_id: otherProfile.id
+          p_user_id: user.id,
+          p_other_user_id: otherProfile.id
         })
 
       if (rpcError) {
-        console.error('RPC Error:', rpcError)
-        throw new Error('Failed to create or find DM channel')
+        console.error('Error creating DM channel:', rpcError)
+        throw new Error('Failed to create DM channel')
       }
 
-      console.log('DM channel result:', result)
-      return result.channel_id
+      // Refresh the channels list
+      loadChannels()
 
+      return channelId
     } catch (err) {
       console.error('Failed to create DM:', err)
-      throw err instanceof Error ? err : new Error('Failed to create DM')
+      throw err
     }
   }
 
   const markChannelAsRead = async (channelId: string) => {
+    if (!user || !channelId) return
+
     try {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) throw new Error('No authenticated user')
+      // Use the simplified function to update last read timestamp
+      const { error } = await supabase
+        .rpc('update_dm_last_read', {
+          p_channel_id: channelId,
+          p_user_id: user.id
+        })
 
-      await supabase
-        .from('direct_message_members')
-        .update({ last_read_at: new Date().toISOString() })
-        .eq('channel_id', channelId)
-        .eq('user_id', user.id)
+      if (error) {
+        console.error('Error marking channel as read:', error)
+        return
+      }
 
-      setChannels(prev => 
-        prev.map(ch => 
-          ch.id === channelId ? { ...ch, unread_count: 0 } : ch
-        )
-      )
+      // Update local state
+      setChannels(prev => prev.map(ch => {
+        if (ch.id === channelId) {
+          return {
+            ...ch,
+            unread_count: 0,
+            members: ch.members.map(m => 
+              m.user_id === user.id 
+                ? { ...m, last_read_at: new Date().toISOString() }
+                : m
+            )
+          }
+        }
+        return ch
+      }))
     } catch (err) {
-      console.error('Failed to mark as read:', err)
-      throw err instanceof Error ? err : new Error('Failed to mark as read')
+      console.error('Failed to mark channel as read:', err)
     }
   }
 
@@ -227,7 +248,6 @@ export function useDirectMessages() {
     isLoading,
     error,
     createDirectMessage,
-    markChannelAsRead,
-    refresh: loadChannels
+    markChannelAsRead
   }
 } 

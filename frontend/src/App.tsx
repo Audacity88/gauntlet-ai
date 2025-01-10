@@ -95,7 +95,7 @@ function AppContent() {
           .from('profiles')
           .select('username, full_name')
           .eq('id', user.id)
-          .single()
+          .maybeSingle()
 
         if (error) throw error
         setProfile(data)

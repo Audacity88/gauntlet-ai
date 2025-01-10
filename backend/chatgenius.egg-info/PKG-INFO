@@ -1,0 +1,9 @@
+Metadata-Version: 2.2
+Name: chatgenius
+Version: 0.1.0
+Requires-Dist: fastapi
+Requires-Dist: uvicorn
+Requires-Dist: sqlalchemy
+Requires-Dist: httpx
+Requires-Dist: python-multipart
+Dynamic: requires-dist

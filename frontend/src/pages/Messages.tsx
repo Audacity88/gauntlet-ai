@@ -1,14 +1,15 @@
 import { useState, useEffect } from 'react'
-import { useChannels, Channel } from '../hooks/useChannels'
+import { useChannels } from '../hooks/useChannels'
 import { useDirectMessages } from '../hooks/useDirectMessages'
 import { MessageList } from '../components/MessageList'
 import { supabase } from '../lib/supabaseClient'
+import { Channel, User } from '../types/schema'
 
 type ChatType = 'channel' | 'dm'
 
 interface ChatTarget {
   type: ChatType
-  id: string
+  id: string  // All IDs are now UUIDs
   name: string
 }
 
@@ -20,26 +21,28 @@ export function Messages() {
     isLoading: channelsLoading, 
     error: channelsError, 
     createChannel,
-    deleteChannel,
-    joinChannel
+    deleteChannel
   } = useChannels()
   const {
     channels: dmChannels,
     isLoading: dmsLoading,
     error: dmsError,
-    // Used in handleCreateDM
     createDirectMessage
   } = useDirectMessages()
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null)
+
+  // Get current user ID on mount
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      setCurrentUserId(user?.id || null)
+    })
+  }, [])
 
   const handleCreateChannel = async () => {
-    const name = prompt('Enter channel name:')
-    if (name) {
+    const slug = prompt('Enter channel name:')
+    if (slug) {
       try {
-        await createChannel({
-          name,
-          description: `Channel: ${name}`,
-          is_private: false
-        })
+        await createChannel({ slug })
       } catch (err) {
         console.error('Failed to create channel:', err)
         alert('Failed to create channel')
@@ -52,25 +55,22 @@ export function Messages() {
     if (!username) return
     
     try {
-      // Don't set currentChat until we have a channel ID
       const channelId = await createDirectMessage(username)
       
-      // Get the username for display
-      const { data: profile, error: profileError } = await supabase
+      const { data: user, error: userError } = await supabase
         .from('profiles')
         .select('username')
         .eq('username', username)
         .single()
 
-      if (profileError || !profile) {
-        throw new Error('Could not find user profile')
+      if (userError || !user) {
+        throw new Error('Could not find user')
       }
 
-      // Now set the current chat with the channel ID and username
       setCurrentChat({
         type: 'dm',
         id: channelId,
-        name: profile.username
+        name: user.username || 'Unknown User'
       })
     } catch (err) {
       console.error('Failed to create DM:', err)
@@ -92,49 +92,68 @@ export function Messages() {
     }
   }
 
-  const getOtherMember = async (members: any[]) => {
+  const getOtherUser = async (members: { user: User }[]) => {
     const { data: { user } } = await supabase.auth.getUser()
-    return members.find(m => m.user_id !== user?.id)?.profile
+    return members.find(m => m.user.id !== user?.id)?.user
   }
 
   const handleChannelClick = async (channel: Channel) => {
     try {
-      // Check if we're already a member
+      // Check if user is already a member
       const { data: membership, error: membershipError } = await supabase
         .from('channel_members')
-        .select('id')
+        .select('*')
         .eq('channel_id', channel.id)
-        .eq('user_id', (await supabase.auth.getUser()).data.user?.id)
+        .eq('user_id', currentUserId)
         .single()
 
-      // Only try to join if we're not already a member and it's a public channel
-      if (!membership && !membershipError && !channel.is_private) {
-        await joinChannel(channel.id)
+      if (membershipError && membershipError.code !== 'PGRST116') {
+        console.error('Error checking channel membership:', membershipError)
+        throw membershipError
       }
-      
+
+      // If not a member and channel is public, join it
+      if (!membership) {
+        const { error: joinError } = await supabase
+          .from('channel_members')
+          .insert({
+            channel_id: channel.id,
+            user_id: currentUserId,
+            profile_id: currentUserId,  // Add profile_id
+            role: 'member'
+          })
+
+        if (joinError) {
+          console.error('Error joining channel:', joinError)
+          throw joinError
+        }
+
+        console.log('Successfully joined channel')
+      }
+
       setCurrentChat({
         type: 'channel',
         id: channel.id,
-        name: channel.name
+        name: channel.slug
       })
     } catch (err) {
-      console.error('Failed to join channel:', err)
-      alert('Failed to join channel')
+      console.error('Failed to handle channel click:', err)
+      alert('Failed to join channel. Please try again.')
     }
   }
 
   useEffect(() => {
     // Load DM usernames
     dmChannels.forEach(async (dm) => {
-      const profile = await getOtherMember(dm.members)
-      if (profile) {
+      const otherUser = await getOtherUser(dm.members)
+      if (otherUser) {
         setDmUsernames(prev => ({
           ...prev,
-          [dm.id]: profile.username || 'Unknown User'
+          [dm.id]: otherUser.username || otherUser.full_name || 'Unknown User'
         }))
       }
     })
-  }, [dmChannels, getOtherMember])
+  }, [dmChannels])
 
   return (
     <div className="flex h-full">
@@ -171,14 +190,16 @@ export function Messages() {
                         : ''
                     }`}
                   >
-                    # {channel.name}
+                    # {channel.slug}
                   </button>
-                  <button
-                    onClick={() => handleDeleteChannel(channel.id)}
-                    className="hidden group-hover:block px-2 py-1 text-red-500 hover:text-red-700 bg-indigo-50 hover:bg-indigo-100 rounded-r"
-                  >
-                    ×
-                  </button>
+                  {currentUserId && channel.created_by === currentUserId && (
+                    <button
+                      onClick={() => handleDeleteChannel(channel.id)}
+                      className="hidden group-hover:block px-2 py-1 text-red-500 hover:text-red-700 bg-indigo-50 hover:bg-indigo-100 rounded-r"
+                    >
+                      ×
+                    </button>
+                  )}
                 </div>
               ))}
             </div>
@@ -248,14 +269,14 @@ export function Messages() {
             </div>
             <div className="flex-1 overflow-hidden">
               <MessageList 
-                channelId={currentChat.id} 
+                channelId={currentChat.id}
                 chatType={currentChat.type}
               />
             </div>
           </div>
         ) : (
           <div className="h-full flex items-center justify-center text-gray-500">
-            Select a channel or conversation to start messaging
+            Select a channel or direct message to start chatting
           </div>
         )}
       </div>
