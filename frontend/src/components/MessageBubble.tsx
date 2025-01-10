@@ -1,6 +1,6 @@
 import { User, DirectMessageWithUser, MessageWithUser, MessageAttachment } from '../types/schema'
 import { useState } from 'react'
-import { Trash2 } from 'lucide-react'
+import { Trash2, Pencil } from 'lucide-react'
 
 interface MessageBubbleProps {
   message: DirectMessageWithUser | MessageWithUser
@@ -31,7 +31,7 @@ export function MessageBubble({
   const handleSave = async () => {
     try {
       if (onEdit) {
-      await onEdit(editContent)
+        await onEdit(editContent)
       }
       setIsEditing(false)
     } catch (error) {
@@ -114,72 +114,74 @@ export function MessageBubble({
             {formatTimestamp(message)}
           </span>
         </div>
-          {isEditing ? (
+        {isEditing ? (
           <div className="w-full">
-              <textarea
-                value={editContent}
-                onChange={(e) => setEditContent(e.target.value)}
-                onKeyDown={handleKeyDown}
+            <textarea
+              value={editContent}
+              onChange={(e) => setEditContent(e.target.value)}
+              onKeyDown={handleKeyDown}
               className="w-full p-2 border rounded focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                autoFocus
-              />
+              autoFocus
+            />
             <div className="flex justify-end space-x-2 mt-2">
-                <button
-                  onClick={() => setIsEditing(false)}
-                  className="px-3 py-1 text-sm text-gray-600 hover:text-gray-800"
-                >
-                  Cancel
-                </button>
-                <button
+              <button
+                onClick={() => setIsEditing(false)}
+                className="px-3 py-1 text-sm text-gray-600 hover:text-gray-800"
+              >
+                Cancel
+              </button>
+              <button
                 onClick={handleSave}
                 className="px-3 py-1 text-sm bg-indigo-600 text-white rounded hover:bg-indigo-700"
-                >
-                  Save
-                </button>
-              </div>
+              >
+                Save
+              </button>
             </div>
-          ) : (
+          </div>
+        ) : (
+          <div className="group relative">
             <div
-            className={`rounded-lg px-4 py-2 ${
+              className={`rounded-lg px-4 py-2 ${
                 isOwnMessage
-                ? 'bg-indigo-600 text-white'
-                : 'bg-gray-100 text-gray-900'
-            }`}
-          >
-            <div className="whitespace-pre-wrap break-words">{messageContent}</div>
-            {message.attachments?.length > 0 && (
-              <div className="mt-2 space-y-2">
-                {message.attachments.map((attachment: MessageAttachment) => (
-                  <div key={attachment.id} className="flex items-center justify-between">
-                    <a
-                      href={attachment.file_path}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-sm underline hover:text-indigo-500"
-                    >
-                      {attachment.filename}
-                    </a>
-                    {isOwnMessage && (
-                      <button
-                        onClick={() => handleDeleteAttachment(attachment.id)}
-                        className="text-red-500 hover:text-red-700"
+                  ? 'bg-indigo-600 text-white'
+                  : 'bg-gray-100 text-gray-900'
+              }`}
+            >
+              <div className="whitespace-pre-wrap break-words">{messageContent}</div>
+              {message.attachments?.length > 0 && (
+                <div className="mt-2 space-y-2">
+                  {message.attachments.map((attachment: MessageAttachment) => (
+                    <div key={attachment.id} className="flex items-center justify-between">
+                      <a
+                        href={attachment.file_path}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-sm underline hover:text-indigo-500"
                       >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    )}
+                        {attachment.filename}
+                      </a>
+                      {isOwnMessage && (
+                        <button
+                          onClick={() => handleDeleteAttachment(attachment.id)}
+                          className="text-red-500 hover:text-red-700"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
-          ))}
-        </div>
+            {isOwnMessage && !isEditing && onEdit && (
+              <button
+                onClick={handleEdit}
+                className="absolute top-2 -left-6 opacity-0 group-hover:opacity-100 transition-opacity text-gray-500 hover:text-gray-700"
+              >
+                <Pencil className="w-4 h-4" />
+              </button>
             )}
           </div>
-        )}
-        {isOwnMessage && !isEditing && onEdit && (
-          <button
-            onClick={handleEdit}
-            className="text-sm text-gray-500 hover:text-gray-700"
-          >
-            Edit
-          </button>
         )}
       </div>
     </div>
