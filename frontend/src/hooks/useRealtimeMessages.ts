@@ -1,25 +1,13 @@
-import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
-import { Message, DirectMessage, User } from '../types/schema'
+import { Message, MessageWithUser, DirectMessage, DirectMessageWithUser, AnyMessage } from '../types/messages'
+import { User } from '../types/schema'
 import { useAuth } from '../hooks/useAuth'
-
-// Cache configuration
-const USER_CACHE_KEY = 'cached_users'
-const USER_CACHE_EXPIRY = 1000 * 60 * 5 // 5 minutes
-
-interface CachedData<T> {
-  data: T
-  timestamp: number
-}
 
 interface UseRealtimeMessagesProps {
   channelId: string
   chatType?: 'channel' | 'dm'
 }
-
-type MessageWithUser = Message & { user: User; updated_at?: string }
-type DirectMessageWithUser = DirectMessage & { user: User; updated_at?: string }
-type AnyMessage = MessageWithUser | DirectMessageWithUser
 
 type QueuedMessage = {
   id: string
@@ -37,6 +25,15 @@ type QueuedMessage = {
 
 interface MembershipCache {
   [key: string]: boolean
+}
+
+// Cache configuration
+const USER_CACHE_KEY = 'cached_users'
+const USER_CACHE_EXPIRY = 1000 * 60 * 5 // 5 minutes
+
+interface CachedData<T> {
+  data: T
+  timestamp: number
 }
 
 // User cache utilities
@@ -289,36 +286,16 @@ export function useRealtimeMessages({ channelId, chatType = 'channel' }: UseReal
       setError(null)
 
       try {
-        let data;
-        let loadError;
-
-        if (chatType === 'dm') {
-          // For DMs, we need to get both the messages and the user profiles
-          const result = await supabase
-            .from('direct_messages')
-            .select(`
-              *,
-              user:profiles(*)
-            `)
-            .eq('channel_id', channelId)
-            .order('created_at', { ascending: true })
-            .limit(50)
-          data = result.data;
-          loadError = result.error;
-        } else {
-          // Use the existing query for channels
-          const result = await supabase
-            .from('messages')
-            .select(`
-              *,
-              user:profiles(*)
-            `)
-            .eq('channel_id', channelId)
-            .order('inserted_at', { ascending: true })
-            .limit(50)
-          data = result.data;
-          loadError = result.error;
-        }
+        const table = chatType === 'dm' ? 'direct_messages' : 'messages'
+        const { data, error: loadError } = await supabase
+          .from(table)
+          .select(`
+            *,
+            user:profiles(*)
+          `)
+          .eq('channel_id', channelId)
+          .order('created_at', { ascending: true })
+          .limit(50)
 
         if (loadError) throw loadError
 
@@ -326,7 +303,7 @@ export function useRealtimeMessages({ channelId, chatType = 'channel' }: UseReal
           // Queue loading of user data
           const messageUserIds = data
             .map(m => m.user_id)
-            .filter(id => id && !userMap.has(id)) // Only queue users we don't have
+            .filter(id => id && !userMap.has(id))
 
           if (messageUserIds.length > 0) {
             console.log('Queueing user IDs from initial load:', messageUserIds)
@@ -334,25 +311,21 @@ export function useRealtimeMessages({ channelId, chatType = 'channel' }: UseReal
           }
 
           // Transform messages to have consistent field names
-          const transformedMessages = data.map(msg => {
-            const timestamp = chatType === 'dm' ? msg.created_at : msg.inserted_at
-            return {
-              ...msg,
-              content: msg.content,
-              message: msg.content,
-              created_at: chatType === 'dm' ? timestamp : undefined,
-              inserted_at: chatType === 'dm' ? undefined : timestamp,
-              updated_at: msg.updated_at || timestamp,
-              user: msg.user || {
-                id: msg.user_id,
-                username: 'Loading...',
-                full_name: 'Loading...',
-                avatar_url: null,
-                created_at: timestamp,
-                updated_at: timestamp
-              }
+          const transformedMessages = data.map(msg => ({
+            ...msg,
+            content: msg.content,
+            message: msg.content,
+            created_at: msg.created_at,
+            updated_at: msg.updated_at || msg.created_at,
+            user: msg.user || {
+              id: msg.user_id,
+              username: 'Loading...',
+              full_name: 'Loading...',
+              avatar_url: null,
+              created_at: msg.created_at,
+              updated_at: msg.updated_at || msg.created_at
             }
-          }) as AnyMessage[]
+          })) as AnyMessage[]
 
           setMessages(transformedMessages)
           
@@ -502,11 +475,11 @@ export function useRealtimeMessages({ channelId, chatType = 'channel' }: UseReal
           user:profiles(*)
         `)
         .eq('channel_id', channelId)
-        .order(chatType === 'dm' ? 'created_at' : 'inserted_at', { ascending: true })
+        .order('created_at', { ascending: true })
         .limit(50)
 
       if (cursor) {
-        query.gt(chatType === 'dm' ? 'created_at' : 'inserted_at', cursor)
+        query.gt('created_at', cursor)
       }
 
       const { data, error: loadError } = await query
@@ -521,11 +494,10 @@ export function useRealtimeMessages({ channelId, chatType = 'channel' }: UseReal
         // Transform messages to have consistent field names
         const transformedMessages = data.map(msg => ({
           ...msg,
-          content: chatType === 'dm' ? msg.content : undefined,
-          message: chatType === 'dm' ? undefined : msg.content,
-          created_at: chatType === 'dm' ? msg.created_at : undefined,
-          inserted_at: chatType === 'dm' ? undefined : msg.inserted_at,
-          updated_at: chatType === 'dm' ? msg.updated_at : undefined
+          content: msg.content,
+          message: msg.content,
+          created_at: msg.created_at,
+          updated_at: msg.updated_at || msg.created_at
         })) as AnyMessage[]
 
         setMessages(prev => {
@@ -535,11 +507,11 @@ export function useRealtimeMessages({ channelId, chatType = 'channel' }: UseReal
           // Add new messages to the map, overwriting any existing ones
           transformedMessages.forEach(msg => messageMap.set(msg.id, msg))
           
-          // Convert map back to array and sort
+          // Convert map back to array and sort by created_at
           const updated = Array.from(messageMap.values())
           updated.sort((a, b) => {
-            const aTime = chatType === 'dm' ? (a as DirectMessageWithUser).created_at : (a as MessageWithUser).inserted_at
-            const bTime = chatType === 'dm' ? (b as DirectMessageWithUser).created_at : (b as MessageWithUser).inserted_at
+            const aTime = a.created_at
+            const bTime = b.created_at
             return new Date(aTime).getTime() - new Date(bTime).getTime()
           })
           
