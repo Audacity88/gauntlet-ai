@@ -7,6 +7,8 @@ import { useAuth } from '../hooks/useAuth'
 import { Message, DirectMessage, DirectMessageWithUser, MessageWithUser, User } from '../types/schema'
 import { Paperclip } from 'lucide-react'
 import { supabase } from '../lib/supabaseClient'
+import { SearchBar } from './SearchBar'
+import { MessageInput } from './MessageInput'
 
 interface MessageListProps {
   channelId: string  // Now always UUID
@@ -58,6 +60,7 @@ export function MessageList({
   chatType = 'channel',
   markChannelAsRead 
 }: MessageListProps) {
+  const [searchQuery, setSearchQuery] = useState('')
   const {
     messages: serverMessages,
     isLoading,
@@ -67,7 +70,7 @@ export function MessageList({
     sendMessage,
     updateMessage,
     users
-  } = useRealtimeMessages({ channelId, chatType })
+  } = useRealtimeMessages({ channelId, chatType, searchQuery })
 
   const [optimisticMessages, setOptimisticMessages] = useState<(MessageWithUser | DirectMessageWithUser)[]>([])
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
@@ -75,6 +78,14 @@ export function MessageList({
   const { user } = useAuth()
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const loadMoreRef = useRef<HTMLDivElement>(null)
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
+
+  // Scroll to bottom function
+  const scrollToBottom = () => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' })
+    }
+  }
 
   // Combine server messages with optimistic messages
   const messages = [...serverMessages]
@@ -116,7 +127,7 @@ export function MessageList({
 
   // Scroll to bottom on new messages
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    scrollToBottom()
   }, [messages.length])
 
   // Set up infinite scroll
@@ -290,6 +301,10 @@ export function MessageList({
     }
   }
 
+  const handleFileSelect = (file: File | null) => {
+    setSelectedFile(file)
+  }
+
   if (error) {
     return (
       <div className="p-4 flex flex-col items-center justify-center text-center">
@@ -319,20 +334,28 @@ export function MessageList({
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex-1 overflow-y-auto">
-        <div className="max-w-6xl mx-auto px-6 py-8 space-y-8">
-          {/* Loading indicator for more messages */}
-          {hasMore && (
-            <div ref={loadMoreRef} className="py-4 text-center">
-              {isLoading ? (
-                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-gray-500 mx-auto" />
-              ) : (
-                // Spacer for intersection observer
-                <div className="h-4" />
-              )}
-            </div>
-          )}
-          
+      <div className="flex-none p-4 border-b">
+        <SearchBar
+          onSearch={setSearchQuery}
+          className="max-w-md mx-auto"
+        />
+      </div>
+      <div className="flex-1 overflow-y-auto p-4" ref={scrollContainerRef}>
+        {/* Load More Button */}
+        {hasMore && (
+          <div ref={loadMoreRef} className="flex justify-center mb-4">
+            <button
+              onClick={() => loadMore()}
+              className="px-4 py-2 text-sm font-medium text-indigo-600 bg-white hover:bg-indigo-50 rounded-md border border-indigo-300"
+              disabled={isLoading}
+            >
+              {isLoading ? 'Loading...' : 'Load More'}
+            </button>
+          </div>
+        )}
+
+        {/* Messages */}
+        <div className="space-y-4">
           {messages.map((message) => {
             // Skip messages with undefined user_id
             if (!message.user_id) {
@@ -396,64 +419,20 @@ export function MessageList({
               />
             )
           })}
-          <div ref={messagesEndRef} />
         </div>
+
+        {/* End of Messages Marker */}
+        <div ref={messagesEndRef} />
       </div>
 
       {/* Message Input */}
-      <div className="border-t bg-white">
-        <div className="max-w-6xl mx-auto px-6 py-4">
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {selectedFile && (
-              <div className="px-2">
-                <FileUpload
-                  selectedFile={selectedFile}
-                  onFileSelect={setSelectedFile}
-                  onRemove={() => setSelectedFile(null)}
-                  isUploading={isUploading}
-                />
-              </div>
-            )}
-            
-            {/* Message Input */}
-            <div className="flex items-center gap-2">
-              <input
-                type="text"
-                name="message"
-                placeholder="Type a message..."
-                className="flex-1 rounded-lg border border-gray-300 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 text-black"
-                disabled={isUploading}
-              />
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => document.getElementById('file-input')?.click()}
-                  className="p-2 bg-gray-50 text-gray-500 hover:bg-gray-800 hover:text-white rounded-full transition-colors"
-                  disabled={isUploading}
-                >
-                  <Paperclip className="w-5 h-5" />
-                  <input
-                    id="file-input"
-                    type="file"
-                    className="hidden"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0]
-                      if (file) setSelectedFile(file)
-                    }}
-                    accept="image/*,application/pdf,.doc,.docx,.txt"
-                  />
-                </button>
-                <button
-                  type="submit"
-                  disabled={isUploading}
-                  className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50"
-                >
-                  Send
-                </button>
-              </div>
-            </div>
-          </form>
-        </div>
+      <div className="flex-none p-4 border-t bg-white">
+        <MessageInput
+          onSendMessage={handleSendMessage}
+          onFileSelect={handleFileSelect}
+          selectedFile={selectedFile}
+          isUploading={isUploading}
+        />
       </div>
     </div>
   )

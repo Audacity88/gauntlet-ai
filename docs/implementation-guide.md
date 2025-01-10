@@ -241,10 +241,13 @@
     - Implemented file deletion with storage cleanup
     - Added error handling and rollback
     - Integrated with Supabase Storage service
-- [ ] Search functionality
-  - [ ] Implement message search
-  - [ ] Add user search
-  - [ ] Create search API endpoints
+- [x] Search functionality
+  - [x] Implement message search
+    - Added SearchBar component with debounced input
+    - Integrated search with useRealtimeMessages hook
+    - Added real-time message filtering
+    - Using Supabase's built-in search functionality
+  - [x] ~~Create search API endpoints~~ _(Not needed - using Supabase's built-in search)_
 - [x] Frontend integration
   - [x] Add file upload UI
     - Created FileUpload component with drag-and-drop

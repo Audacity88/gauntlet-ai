@@ -7,6 +7,7 @@ import { useAuth } from '../hooks/useAuth'
 interface UseRealtimeMessagesProps {
   channelId: string
   chatType?: 'channel' | 'dm'
+  searchQuery?: string
 }
 
 type QueuedMessage = {
@@ -68,7 +69,7 @@ const saveUsersToCache = (users: User[]) => {
   }
 }
 
-export function useRealtimeMessages({ channelId, chatType = 'channel' }: UseRealtimeMessagesProps) {
+export function useRealtimeMessages({ channelId, chatType = 'channel', searchQuery }: UseRealtimeMessagesProps) {
   // Initialize all state with proper types
   const [messages, setMessages] = useState<AnyMessage[]>([])
   const [isLoading, setIsLoading] = useState(false)
@@ -287,7 +288,7 @@ export function useRealtimeMessages({ channelId, chatType = 'channel' }: UseReal
 
       try {
         const table = chatType === 'dm' ? 'direct_messages' : 'messages'
-        const { data, error: loadError } = await supabase
+        let query = supabase
           .from(table)
           .select(`
             *,
@@ -296,6 +297,13 @@ export function useRealtimeMessages({ channelId, chatType = 'channel' }: UseReal
           .eq('channel_id', channelId)
           .order('created_at', { ascending: true })
           .limit(50)
+
+        // Add search filter if query is provided
+        if (searchQuery?.trim()) {
+          query = query.ilike('content', `%${searchQuery.trim()}%`)
+        }
+
+        const { data, error: loadError } = await query
 
         if (loadError) throw loadError
 
@@ -345,7 +353,7 @@ export function useRealtimeMessages({ channelId, chatType = 'channel' }: UseReal
     }
 
     loadInitialMessages()
-  }, [channelId, chatType, user, queueUserLoad, userMap])
+  }, [channelId, chatType, user, queueUserLoad, userMap, searchQuery])
 
   // Batch user loading with reduced debounce
   useEffect(() => {
@@ -468,7 +476,7 @@ export function useRealtimeMessages({ channelId, chatType = 'channel' }: UseReal
 
     try {
       const table = chatType === 'dm' ? 'direct_messages' : 'messages'
-      const query = supabase
+      let query = supabase
         .from(table)
         .select(`
           *,
@@ -479,7 +487,12 @@ export function useRealtimeMessages({ channelId, chatType = 'channel' }: UseReal
         .limit(50)
 
       if (cursor) {
-        query.gt('created_at', cursor)
+        query = query.gt('created_at', cursor)
+      }
+
+      // Add search filter if query is provided
+      if (searchQuery?.trim()) {
+        query = query.ilike('content', `%${searchQuery.trim()}%`)
       }
 
       const { data, error: loadError } = await query
@@ -526,7 +539,7 @@ export function useRealtimeMessages({ channelId, chatType = 'channel' }: UseReal
     } finally {
       setIsLoading(false)
     }
-  }, [channelId, chatType, user, checkDmMembership, queueUserLoad])
+  }, [user, channelId, chatType, searchQuery, checkDmMembership])
 
   const sendMessage = useCallback(async (content: string) => {
     if (!user) throw new Error('No authenticated user')
