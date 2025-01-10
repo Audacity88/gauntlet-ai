@@ -1,69 +1,85 @@
-import { useState } from 'react'
-import axios from 'axios'
+import { useCallback } from 'react'
+import { supabase } from '../lib/supabaseClient'
+import { MessageAttachment } from '../types/schema'
 
-const API_BASE_URL = 'http://localhost:8000'  // FastAPI default port
-
-interface UseFileUploadOptions {
-  onSuccess?: (url: string) => void
-  onError?: (error: Error) => void
+interface UseFileUploadProps {
+  chatType?: 'channel' | 'dm'
 }
 
-interface FileUploadResponse {
-  id: string  // UUID
-  message_id: string  // UUID
-  filename: string
-  file_path: string
-  file_size: number
-  content_type: string
-  created_at: string
-}
-
-export function useFileUpload(options: UseFileUploadOptions = {}) {
-  const [isUploading, setIsUploading] = useState(false)
-  const [error, setError] = useState<Error | null>(null)
-
-  const uploadFile = async (file: File, messageId: string): Promise<FileUploadResponse> => {
-    setIsUploading(true)
-    setError(null)
-
-    const formData = new FormData()
-    formData.append('file', file)
-
+export function useFileUpload({ chatType = 'channel' }: UseFileUploadProps = {}) {
+  const uploadFile = useCallback(async (file: File, messageId: string) => {
     try {
-      const response = await axios.post<FileUploadResponse>(`${API_BASE_URL}/files/upload/${messageId}`, formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-        withCredentials: true,
-      })
+      // Generate unique filename to avoid collisions
+      const timestamp = new Date().getTime()
+      const uniqueFilename = `${timestamp}-${file.name}`
+      const filePath = `attachments/${messageId}/${uniqueFilename}`
 
-      options.onSuccess?.(response.data.file_path)
-      return response.data
-    } catch (err) {
-      const error = err instanceof Error ? err : new Error('Failed to upload file')
-      setError(error)
-      options.onError?.(error)
+      // Upload file to storage
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('message-attachments')
+        .upload(filePath, file)
+
+      if (uploadError) {
+        console.error('Error uploading file:', uploadError)
+        throw uploadError
+      }
+
+      // Get public URL for the uploaded file
+      const { data: { publicUrl } } = supabase.storage
+        .from('message-attachments')
+        .getPublicUrl(filePath)
+
+      // Create attachment record
+      const attachment: Partial<MessageAttachment> = {
+        id: `${timestamp}`,
+        message_id: messageId,
+        filename: file.name,
+        file_path: filePath,
+        content_type: file.type,
+        size: file.size,
+        url: publicUrl
+      }
+
+      // Update message with attachment
+      const table = chatType === 'dm' ? 'direct_messages' : 'messages'
+
+      // First get the current message
+      const { data: currentMessage, error: fetchError } = await supabase
+        .from(table)
+        .select('*, profile:profiles(*)')
+        .eq('id', messageId)
+        .single()
+
+      if (fetchError) {
+        console.error('Error fetching message:', fetchError)
+        throw fetchError
+      }
+
+      const existingAttachments = currentMessage?.attachments || []
+      const newAttachments = [...existingAttachments, attachment]
+
+      // Update the message
+      const { data: updatedMessage, error: updateError } = await supabase
+        .rpc(chatType === 'dm' ? 'update_dm_with_attachment' : 'update_message_with_attachment', {
+          p_message_id: messageId,
+          p_attachments: JSON.stringify(newAttachments)
+        })
+
+      if (updateError) {
+        console.error('Error updating message with attachment:', updateError)
+        throw updateError
+      }
+
+      // Return the message with the profile data
+      return {
+        ...updatedMessage,
+        user: currentMessage.profile
+      }
+    } catch (error) {
+      console.error('File upload failed:', error)
       throw error
-    } finally {
-      setIsUploading(false)
     }
-  }
+  }, [chatType])
 
-  const deleteFile = async (attachmentId: string) => {
-    try {
-      await axios.delete(`${API_BASE_URL}/files/${attachmentId}`, {
-        withCredentials: true,
-      })
-    } catch (err) {
-      const error = err instanceof Error ? err : new Error('Failed to delete file')
-      throw error
-    }
-  }
-
-  return {
-    uploadFile,
-    deleteFile,
-    isUploading,
-    error,
-  }
+  return { uploadFile }
 } 

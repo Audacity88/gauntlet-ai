@@ -54,10 +54,12 @@ export function StatusManager() {
       if (!user) return
 
       const { error } = await supabase
-        .rpc('update_user_status', {
-          p_user_id: user.id,
-          p_status: newStatus
+        .from('profiles')
+        .update({ 
+          status: newStatus,
+          last_seen: new Date().toISOString()
         })
+        .eq('id', user.id)
 
       if (error) {
         console.error('Error updating status:', error)

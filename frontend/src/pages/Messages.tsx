@@ -58,7 +58,7 @@ export function Messages() {
       const channelId = await createDirectMessage(username)
       
       const { data: user, error: userError } = await supabase
-        .from('profiles')
+        .from('users')
         .select('username')
         .eq('username', username)
         .single()

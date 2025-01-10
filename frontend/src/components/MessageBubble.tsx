@@ -31,7 +31,7 @@ export function MessageBubble({
   const handleSave = async () => {
     try {
       if (onEdit) {
-        await onEdit(editContent)
+      await onEdit(editContent)
       }
       setIsEditing(false)
     } catch (error) {
@@ -114,31 +114,31 @@ export function MessageBubble({
             {formatTimestamp(message)}
           </span>
         </div>
-        {isEditing ? (
+          {isEditing ? (
           <div className="w-full">
-            <textarea
-              value={editContent}
-              onChange={(e) => setEditContent(e.target.value)}
-              onKeyDown={handleKeyDown}
+              <textarea
+                value={editContent}
+                onChange={(e) => setEditContent(e.target.value)}
+                onKeyDown={handleKeyDown}
               className="w-full p-2 border rounded focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-              autoFocus
-            />
+                autoFocus
+              />
             <div className="flex justify-end space-x-2 mt-2">
-              <button
-                onClick={() => setIsEditing(false)}
-                className="px-3 py-1 text-sm text-gray-600 hover:text-gray-800"
-              >
-                Cancel
-              </button>
-              <button
+                <button
+                  onClick={() => setIsEditing(false)}
+                  className="px-3 py-1 text-sm text-gray-600 hover:text-gray-800"
+                >
+                  Cancel
+                </button>
+                <button
                 onClick={handleSave}
                 className="px-3 py-1 text-sm bg-indigo-600 text-white rounded hover:bg-indigo-700"
-              >
-                Save
-              </button>
+                >
+                  Save
+                </button>
+              </div>
             </div>
-          </div>
-        ) : (
+          ) : (
           <div className="group relative">
             <div
               className={`rounded-lg px-4 py-2 ${
@@ -170,8 +170,8 @@ export function MessageBubble({
                       )}
                     </div>
                   ))}
-                </div>
-              )}
+            </div>
+          )}
             </div>
             {isOwnMessage && !isEditing && onEdit && (
               <button
@@ -181,7 +181,7 @@ export function MessageBubble({
                 <Pencil className="w-4 h-4" />
               </button>
             )}
-          </div>
+        </div>
         )}
       </div>
     </div>
