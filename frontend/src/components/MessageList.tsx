@@ -6,6 +6,7 @@ import { useFileUpload } from '../hooks/useFileUpload'
 import { useAuth } from '../hooks/useAuth'
 import { Message, DirectMessage, DirectMessageWithUser, MessageWithUser, User } from '../types/schema'
 import { Paperclip } from 'lucide-react'
+import { supabase } from '../lib/supabaseClient'
 
 interface MessageListProps {
   channelId: string  // Now always UUID
@@ -70,7 +71,7 @@ export function MessageList({
 
   const [optimisticMessages, setOptimisticMessages] = useState<(MessageWithUser | DirectMessageWithUser)[]>([])
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
-  const { uploadFile, deleteFile, isUploading } = useFileUpload()
+  const { uploadFile, deleteFile, isUploading } = useFileUpload({ chatType: chatType || 'channel' })
   const { user } = useAuth()
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const loadMoreRef = useRef<HTMLDivElement>(null)
@@ -78,18 +79,16 @@ export function MessageList({
   // Combine server messages with optimistic messages
   const messages = [...serverMessages]
   optimisticMessages.forEach(optMsg => {
-    // Only add optimistic message if we don't have a real message with matching content
-    const hasRealMessage = messages.some(m => {
-      const optContent = chatType === 'dm' ? optMsg.content : (optMsg as MessageWithUser).message
-      const msgContent = chatType === 'dm' ? m.content : (m as MessageWithUser).message
-      const timeDiff = Math.abs(
+    // Only add optimistic message if it's not already in server messages
+    const hasRealMessage = serverMessages.some(m => m.id === optMsg.id || (
+      m.user_id === optMsg.user_id && 
+      ((chatType === 'dm' ? m.content : (m as MessageWithUser).message) === 
+       (chatType === 'dm' ? optMsg.content : (optMsg as MessageWithUser).message)) &&
+      Math.abs(
         new Date(chatType === 'dm' ? m.created_at : (m as MessageWithUser).inserted_at).getTime() - 
         new Date(chatType === 'dm' ? optMsg.created_at : (optMsg as MessageWithUser).inserted_at).getTime()
-      )
-      return m.user_id === optMsg.user_id && 
-             msgContent === optContent && 
-             timeDiff < 5000 // Within 5 seconds
-    })
+      ) < 5000 // Within 5 seconds
+    ))
     
     if (!hasRealMessage) {
       messages.push(optMsg)
@@ -100,17 +99,16 @@ export function MessageList({
   useEffect(() => {
     setOptimisticMessages(prev => 
       prev.filter(optMsg => {
-        const hasRealMessage = serverMessages.some(m => {
-          const optContent = chatType === 'dm' ? optMsg.content : (optMsg as MessageWithUser).message
-          const msgContent = chatType === 'dm' ? m.content : (m as MessageWithUser).message
-          const timeDiff = Math.abs(
+        // Keep optimistic message if it's not in server messages
+        const hasRealMessage = serverMessages.some(m => m.id === optMsg.id || (
+          m.user_id === optMsg.user_id && 
+          ((chatType === 'dm' ? m.content : (m as MessageWithUser).message) === 
+           (chatType === 'dm' ? optMsg.content : (optMsg as MessageWithUser).message)) &&
+          Math.abs(
             new Date(chatType === 'dm' ? m.created_at : (m as MessageWithUser).inserted_at).getTime() - 
             new Date(chatType === 'dm' ? optMsg.created_at : (optMsg as MessageWithUser).inserted_at).getTime()
-          )
-          return m.user_id === optMsg.user_id && 
-                 msgContent === optContent && 
-                 timeDiff < 5000
-        })
+          ) < 5000
+        ))
         return !hasRealMessage
       })
     )
@@ -159,6 +157,139 @@ export function MessageList({
     }
   }, [chatType, channelId, isLoading, messages.length, markChannelAsRead])
 
+  // Update the message sending logic
+  const handleSendMessage = async (content: string) => {
+    if (!user) throw new Error('No user found')
+
+    const table = chatType === 'dm' ? 'direct_messages' : 'messages'
+    const messageData = {
+      content,
+      channel_id: channelId,
+      user_id: user.id,
+      profile_id: user.id, // In our schema, profile_id is the same as user_id
+      attachments: []
+    }
+
+    const { data: message, error } = await supabase
+      .from(table)
+      .insert(messageData)
+      .select('*, profile:profiles(*)')
+      .single()
+
+    if (error) throw error
+    return message
+  }
+
+  // Update the file upload logic
+  const handleFileUpload = async (file: File, messageId: string) => {
+    try {
+      // Generate unique filename
+      const timestamp = new Date().getTime()
+      const uniqueFilename = `${timestamp}-${file.name}`
+      const filePath = `attachments/${messageId}/${uniqueFilename}`
+
+      // Upload to storage
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('message-attachments')
+        .upload(filePath, file)
+
+      if (uploadError) throw uploadError
+
+      // Get public URL
+      const { data: { publicUrl } } = supabase.storage
+        .from('message-attachments')
+        .getPublicUrl(filePath)
+
+      // Create attachment object
+      const attachment = {
+        id: `${timestamp}`,
+        message_id: messageId,
+        filename: file.name,
+        file_path: filePath,
+        content_type: file.type,
+        size: file.size,
+        url: publicUrl
+      }
+
+      // Get current message
+      const table = chatType === 'dm' ? 'direct_messages' : 'messages'
+      const { data: currentMessage, error: fetchError } = await supabase
+        .from(table)
+        .select('*, profile:profiles(*)')
+        .eq('id', messageId)
+        .single()
+
+      if (fetchError) throw fetchError
+
+      const existingAttachments = currentMessage?.attachments || []
+      const newAttachments = [...existingAttachments, attachment]
+
+      // Update message with attachment
+      const { data: updatedMessage, error: updateError } = await supabase
+        .rpc(
+          chatType === 'dm' ? 'update_dm_with_attachment' : 'update_message_with_attachment',
+          {
+            p_message_id: messageId,
+            p_attachments: newAttachments
+          }
+        )
+
+      if (updateError) throw updateError
+
+      // Return the message with profile data
+      return {
+        ...updatedMessage,
+        profile: currentMessage.profile
+      }
+    } catch (error) {
+      console.error('File upload failed:', error)
+      throw error
+    }
+  }
+
+  // Update the form submission handler
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    const form = e.target as HTMLFormElement
+    const input = form.querySelector('input[type="text"]') as HTMLInputElement
+    const content = input.value.trim()
+
+    if (!content && !selectedFile) return
+
+    let sentMessage: MessageWithUser | DirectMessageWithUser | null = null;
+    try {
+      // Send the message first
+      sentMessage = await handleSendMessage(content)
+      
+      // Add optimistic update
+      setOptimisticMessages(prev => [...prev, sentMessage!])
+      
+      // If there's a file selected, upload it
+      if (selectedFile && sentMessage) {
+        const updatedMessage = await handleFileUpload(selectedFile, sentMessage.id)
+        // Update the messages list with the new message containing the attachment
+        setOptimisticMessages(prev => 
+          prev.map(m => m.id === sentMessage!.id ? updatedMessage : m)
+        )
+      }
+
+      // Clear the form
+      form.reset()
+      setSelectedFile(null)
+      
+      // Scroll to bottom
+      scrollToBottom()
+    } catch (error) {
+      console.error('Error sending message:', error)
+      // Remove optimistic message on error
+      if (sentMessage) {
+        setOptimisticMessages(prev => 
+          prev.filter(m => m.id !== sentMessage!.id)
+        )
+      }
+    }
+  }
+
   if (error) {
     return (
       <div className="p-4 flex flex-col items-center justify-center text-center">
@@ -188,9 +319,8 @@ export function MessageList({
 
   return (
     <div className="flex flex-col h-full">
-      {/* Messages */}
       <div className="flex-1 overflow-y-auto">
-        <div className="max-w-6xl mx-auto px-6 space-y-6 py-6">
+        <div className="max-w-6xl mx-auto px-6 py-8 space-y-8">
           {/* Loading indicator for more messages */}
           {hasMore && (
             <div ref={loadMoreRef} className="py-4 text-center">
@@ -220,21 +350,48 @@ export function MessageList({
               )
             }
 
-            const typedMessage = chatType === 'dm' 
-              ? message as DirectMessageWithUser 
-              : message as MessageWithUser
-
             return (
               <MessageBubble
                 key={message.id}
-                message={typedMessage}
+                message={message}
                 user={messageUser}
                 isOwnMessage={message.user_id === user?.id}
                 onEdit={async (content) => {
                   await updateMessage(message.id, content)
                 }}
                 onDeleteAttachment={async (attachmentId) => {
-                  await deleteFile(attachmentId)
+                  try {
+                    const attachment = message.attachments?.find(a => a.id === attachmentId)
+                    if (!attachment) return
+
+                    // Delete from storage
+                    await supabase.storage
+                      .from('message-attachments')
+                      .remove([attachment.file_path])
+
+                    // Update message attachments
+                    const newAttachments = message.attachments?.filter(a => a.id !== attachmentId) || []
+                    const { error } = await supabase
+                      .rpc(
+                        chatType === 'dm' ? 'update_dm_with_attachment' : 'update_message_with_attachment',
+                        {
+                          p_message_id: message.id,
+                          p_attachments: newAttachments
+                        }
+                      )
+
+                    if (error) throw error
+
+                    // Update optimistic state
+                    setOptimisticMessages(prev =>
+                      prev.map(m => m.id === message.id
+                        ? { ...m, attachments: newAttachments }
+                        : m
+                      )
+                    )
+                  } catch (error) {
+                    console.error('Failed to delete attachment:', error)
+                  }
                 }}
               />
             )
@@ -246,64 +403,7 @@ export function MessageList({
       {/* Message Input */}
       <div className="border-t bg-white">
         <div className="max-w-6xl mx-auto px-6 py-4">
-          <form
-            onSubmit={async (e) => {
-              e.preventDefault()
-              console.log('Form submitted');
-              const form = e.target as HTMLFormElement
-              const input = form.elements.namedItem('message') as HTMLInputElement
-              const content = input.value.trim()
-              console.log('Message content:', content);
-
-              if ((content || selectedFile) && user) {
-                console.log('Attempting to send message...');
-                // Clear input immediately
-                input.value = ''
-                
-                // Find the current user's full profile from users array
-                const currentUser = users?.find(u => u.id === user.id) || {
-                  ...user,
-                  id: user.id,
-                  // Add any other required user fields
-                }
-                if (!user) {
-                  console.error('No authenticated user');
-                  return
-                }
-
-                // Create optimistic message if there's content
-                if (content) {
-                  console.log('Creating optimistic message');
-                  const optimisticMessage = createOptimisticMessage(content, currentUser, channelId, chatType)
-                  setOptimisticMessages(prev => [...prev, optimisticMessage])
-                }
-                
-                try {
-                  // Send message in background
-                  console.log('Calling sendMessage...');
-                  const message = await sendMessage(content || '')
-                  console.log('Message sent:', message);
-                  
-                  // If there's a file, upload it
-                  if (selectedFile) {
-                    await uploadFile(selectedFile, message.id)
-                    setSelectedFile(null)
-                  }
-                } catch (error) {
-                  console.error('Failed to send message:', error)
-                  // Remove optimistic message if there was content
-                  if (content) {
-                    setOptimisticMessages(prev => prev.filter(m => {
-                      const msgContent = 'content' in m ? m.content : m.message
-                      return msgContent !== content
-                    }))
-                  }
-                  alert('Failed to send message. Please try again.')
-                }
-              }
-            }}
-            className="space-y-4"
-          >
+          <form onSubmit={handleSubmit} className="space-y-4">
             {selectedFile && (
               <div className="px-2">
                 <FileUpload
