@@ -1,16 +1,19 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { supabase } from '../lib/supabaseClient'
+import { useAuth } from '../hooks/useAuth'
+import { useProfile } from '../hooks/useProfile'
 
 interface OnboardingProps {
   onComplete: () => void;
 }
 
 export function Onboarding({ onComplete }: OnboardingProps) {
+  const { user } = useAuth()
+  const { updateProfile, error: profileError, loading: profileLoading } = useProfile()
   const [username, setUsername] = useState('')
   const [fullName, setFullName] = useState('')
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<Error | null>(null)
   const navigate = useNavigate()
 
   async function handleSubmit(e: React.FormEvent) {
@@ -19,98 +22,85 @@ export function Onboarding({ onComplete }: OnboardingProps) {
     setLoading(true)
 
     try {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) throw new Error('No user found')
+      if (!user) throw new Error('No authenticated user')
 
-      console.log('Creating user profile for:', user.id)
+      await updateProfile({
+        username,
+        full_name: fullName
+      })
 
-      // First create/update the profile
-      const { error: upsertError } = await supabase
-        .from('profiles')
-        .upsert({
-          id: user.id,
-          username,
-          full_name: fullName
-        })
-
-      if (upsertError) {
-        console.error('Error creating user:', upsertError)
-        throw upsertError
-      }
-
-      // Then fetch the created profile
-      const { data, error: fetchError } = await supabase
-        .from('profiles')
-        .select('id, username, full_name')
-        .filter('id', 'eq', user.id)
-        .single()
-
-      if (fetchError) {
-        console.error('Error fetching created profile:', fetchError)
-        throw fetchError
-      }
-
-      console.log('User profile created:', data)
-      
-      // Call onComplete first
       onComplete()
-      
-      // Then navigate
-      console.log('Navigating to home...')
-      navigate('/', { replace: true })
-      
-    } catch (err: any) {
+      navigate('/chat')
+    } catch (err) {
+      setError(err instanceof Error ? err : new Error('Failed to complete onboarding'))
       console.error('Onboarding error:', err)
-      setError(err.message)
     } finally {
       setLoading(false)
     }
   }
 
+  const isSubmitting = loading || profileLoading
+  const displayError = error || profileError
+
   return (
-    <div className="min-h-screen bg-gray-100 flex items-center justify-center">
-      <div className="max-w-md w-full bg-white p-8 rounded-lg shadow">
-        <h2 className="text-2xl font-bold mb-6">Complete Your Profile</h2>
-        {error && (
-          <div className="mb-4 p-3 bg-red-100 text-red-700 rounded">
-            {error}
+    <div className="max-w-md mx-auto p-6">
+      <h1 className="text-2xl font-bold mb-6">Complete Your Profile</h1>
+      
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div>
+          <label 
+            htmlFor="username" 
+            className="block text-sm font-medium text-gray-700 mb-1"
+          >
+            Username
+          </label>
+          <input
+            id="username"
+            type="text"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            required
+            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500"
+            disabled={isSubmitting}
+          />
+        </div>
+
+        <div>
+          <label 
+            htmlFor="fullName" 
+            className="block text-sm font-medium text-gray-700 mb-1"
+          >
+            Full Name
+          </label>
+          <input
+            id="fullName"
+            type="text"
+            value={fullName}
+            onChange={(e) => setFullName(e.target.value)}
+            required
+            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500"
+            disabled={isSubmitting}
+          />
+        </div>
+
+        {displayError && (
+          <div className="text-red-500 text-sm" role="alert">
+            {displayError.message}
           </div>
         )}
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700">
-              Username
-            </label>
-            <input
-              type="text"
-              required
-              minLength={3}
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700">
-              Full Name
-            </label>
-            <input
-              type="text"
-              required
-              value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-            />
-          </div>
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-          >
-            {loading ? 'Saving...' : 'Continue'}
-          </button>
-        </form>
-      </div>
+
+        <button
+          type="submit"
+          disabled={isSubmitting}
+          className={`
+            w-full py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white 
+            bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500
+            ${isSubmitting ? 'opacity-75 cursor-not-allowed' : ''}
+          `}
+        >
+          {isSubmitting ? 'Saving...' : 'Complete Profile'}
+        </button>
+      </form>
     </div>
   )
 } 

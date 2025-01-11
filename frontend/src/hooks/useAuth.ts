@@ -1,49 +1,32 @@
 import { useEffect, useState } from 'react'
-import { supabase } from '../lib/supabaseClient'
-import { User } from '../types/schema'
+import { AuthManager } from '../utils/auth/AuthManager'
+import { User } from '../types/models'
 
-export function useAuth() {
-  const [user, setUser] = useState<User | null>(null)
-  const [loading, setLoading] = useState(true)
+// Singleton instance of AuthManager
+const authManager = new AuthManager()
+
+interface AuthState {
+  user: User | null
+  loading: boolean
+  initialized: boolean
+  error: Error | null
+}
+
+export const useAuth = () => {
+  const [state, setState] = useState<AuthState>(authManager.getState())
 
   useEffect(() => {
-    // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) {
-        // Map Supabase user to our User type
-        setUser({
-          id: session.user.id,
-          username: session.user.user_metadata.username || session.user.email?.split('@')[0] || 'Unknown',
-          full_name: session.user.user_metadata.full_name || 'Unknown User',
-          avatar_url: session.user.user_metadata.avatar_url,
-          created_at: session.user.created_at,
-          updated_at: session.user.updated_at
-        })
-      }
-      setLoading(false)
-    })
-
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session?.user) {
-        // Map Supabase user to our User type
-        setUser({
-          id: session.user.id,
-          username: session.user.user_metadata.username || session.user.email?.split('@')[0] || 'Unknown',
-          full_name: session.user.user_metadata.full_name || 'Unknown User',
-          avatar_url: session.user.user_metadata.avatar_url,
-          created_at: session.user.created_at,
-          updated_at: session.user.updated_at
-        })
-      } else {
-        setUser(null)
-      }
-    })
-
-    return () => {
-      subscription.unsubscribe()
-    }
+    // Subscribe to auth state changes
+    const unsubscribe = authManager.subscribe((newState: AuthState) => setState(newState))
+    return unsubscribe
   }, [])
 
-  return { user, loading }
+  return {
+    ...state,
+    signIn: authManager.signInWithEmail.bind(authManager),
+    signUp: authManager.signUpWithEmail.bind(authManager),
+    signOut: authManager.signOut.bind(authManager),
+    updateProfile: authManager.updateUserMetadata.bind(authManager),
+    resetPassword: authManager.resetPassword.bind(authManager)
+  }
 } 

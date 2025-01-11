@@ -1,12 +1,14 @@
 import { Link } from 'react-router-dom'
 import { StatusManager } from './StatusManager'
-import { supabase } from '../lib/supabaseClient'
+import { useAuth } from '../hooks/useAuth'
 
 interface LayoutProps {
   children: React.ReactNode
 }
 
 export function Layout({ children }: LayoutProps) {
+  const { signOut } = useAuth()
+
   return (
     <div className="flex h-screen bg-gray-50">
       {/* Sidebar */}
@@ -21,7 +23,7 @@ export function Layout({ children }: LayoutProps) {
           <div className="flex items-center space-x-2">
             <StatusManager />
             <button 
-              onClick={() => supabase.auth.signOut()}
+              onClick={signOut}
               className="text-sm text-indigo-200 hover:text-white"
             >
               Sign Out

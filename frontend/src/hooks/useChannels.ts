@@ -1,11 +1,24 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabaseClient'
-import { Channel, ChannelWithDetails } from '../types/schema'
+import { Channel, ChannelWithDetails, User } from '../types/models'
+import { getChannelProcessor } from '../utils/ChannelProcessor'
+import { useChannelStore } from '../stores/channelStore'
+import { useUserCache } from '../hooks/useUserCache'
 
 export function useChannels() {
-  const [channels, setChannels] = useState<ChannelWithDetails[]>([])
-  const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState<Error | null>(null)
+  const { 
+    channels, 
+    isLoading,
+    error,
+    setChannels, 
+    setLoading, 
+    setError 
+  } = useChannelStore()
+  const { getUser } = useUserCache()
+  
+  const channelProcessor = getChannelProcessor({
+    getUserById: (id: string) => getUser(id)
+  })
 
   // Load channels on mount
   useEffect(() => {
@@ -21,20 +34,25 @@ export function useChannels() {
           schema: 'public',
           table: 'channels'
         },
-        (payload) => {
-          console.log('Received channel change:', payload)
-          if (payload.eventType === 'INSERT') {
-            setChannels(prev => [payload.new as ChannelWithDetails, ...prev])
-          } else if (payload.eventType === 'UPDATE') {
-            setChannels(prev => 
-              prev.map(ch => 
-                ch.id === payload.new.id ? payload.new as ChannelWithDetails : ch
-              )
-            )
-          } else if (payload.eventType === 'DELETE') {
-            setChannels(prev => 
-              prev.filter(ch => ch.id !== payload.old.id)
-            )
+        async (payload) => {
+          try {
+            if (payload.eventType === 'INSERT') {
+              const processedChannel = await channelProcessor.processChannel(payload.new as Channel)
+              setChannels(prev => [...Array.from(prev.values()), processedChannel])
+            } else if (payload.eventType === 'UPDATE') {
+              const processedChannel = await channelProcessor.processChannel(payload.new as Channel)
+              setChannels(prev => {
+                const channels = Array.from(prev.values())
+                const index = channels.findIndex(ch => ch.id === processedChannel.id)
+                if (index === -1) return channels
+                channels[index] = processedChannel
+                return channels
+              })
+            } else if (payload.eventType === 'DELETE') {
+              setChannels(prev => Array.from(prev.values()).filter(ch => ch.id !== payload.old.id))
+            }
+          } catch (err) {
+            console.error('Error processing channel change:', err)
           }
         }
       )
@@ -47,7 +65,7 @@ export function useChannels() {
 
   const loadChannels = async () => {
     try {
-      setIsLoading(true)
+      setLoading(true)
       setError(null)
 
       const { data: { user } } = await supabase.auth.getUser()
@@ -62,19 +80,20 @@ export function useChannels() {
         `)
         .order('inserted_at', { ascending: false })
 
-      if (loadError) {
-        console.error('Supabase error loading channels:', loadError)
-        throw loadError
-      }
+      if (loadError) throw loadError
 
-      console.log('Channels data:', data)
-      setChannels(data)
+      // Process channels with ChannelProcessor
+      const processedChannels = await Promise.all(
+        (data || []).map(channel => channelProcessor.processChannel(channel))
+      )
+      
+      setChannels(() => processedChannels.filter(Boolean))
 
     } catch (err) {
       console.error('Failed to load channels:', err)
       setError(err instanceof Error ? err : new Error('Failed to load channels'))
     } finally {
-      setIsLoading(false)
+      setLoading(false)
     }
   }
 

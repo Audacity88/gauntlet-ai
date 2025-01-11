@@ -1,202 +1,234 @@
-import { User, DirectMessageWithUser, MessageWithUser, MessageAttachment } from '../types/schema'
-import { useState, useEffect } from 'react'
-import { Trash2, Pencil, FileIcon, Image as ImageIcon, Loader2, Check, X } from 'lucide-react'
+import { memo, useState } from 'react';
+import { useAuth } from '../hooks/useAuth';
+import { MessageWithUser, DirectMessageWithUser } from '../types/schema';
+import { UserPresence } from './UserPresence';
+import { ErrorBoundary } from './ErrorBoundary';
 
-type AnyMessage = MessageWithUser | DirectMessageWithUser;
-
-interface MessageBubbleProps {
-  message: AnyMessage
-  user: User
-  isOwnMessage: boolean
-  onEdit?: (content: string) => Promise<void>
-  onDeleteAttachment?: (attachmentId: string) => Promise<void>
+interface MessageError {
+  code: string;
+  message: string;
 }
 
-export function MessageBubble({ message, user, isOwnMessage, onEdit, onDeleteAttachment }: MessageBubbleProps) {
-  const [isEditing, setIsEditing] = useState(false)
-  const [editedContent, setEditedContent] = useState(message.content || message.message || '')
-  const [imageError, setImageError] = useState<Record<string, boolean>>({})
-  const [imageLoading, setImageLoading] = useState<Record<string, boolean>>({})
+interface MessageBubbleProps {
+  message: MessageWithUser | DirectMessageWithUser;
+  onUpdate?: (messageId: string, content: string) => Promise<void>;
+  isOptimistic?: boolean;
+}
 
-  const messageContent = 'message' in message ? message.message : message.content
-  const timestamp = 'inserted_at' in message ? message.inserted_at : message.created_at
+const MessageBubbleContent = memo(function MessageBubbleContent({
+  message,
+  onUpdate,
+  isOptimistic = false
+}: MessageBubbleProps) {
+  const { user: currentUser } = useAuth();
+  const [isEditing, setIsEditing] = useState(false);
+  const [editContent, setEditContent] = useState('');
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [error, setError] = useState<MessageError | null>(null);
 
-  // Update editedContent when message changes
-  useEffect(() => {
-    setEditedContent(message.content || message.message || '')
-  }, [message])
+  const content = 'content' in message ? message.content : message.message;
+  const isCurrentUser = currentUser?.id === message.user_id;
 
-  useEffect(() => {
-    // Reset loading and error states when message changes
-    setImageLoading({})
-    setImageError({})
-  }, [message])
+  const handleEdit = () => {
+    setIsEditing(true);
+    setEditContent(content);
+    setError(null);
+  };
 
-  const handleEdit = async () => {
-    if (!onEdit || !editedContent.trim()) return
-    try {
-      await onEdit(editedContent)
-      setIsEditing(false)
-    } catch (error) {
-      console.error('Failed to edit message:', error)
+  const handleCancelEdit = () => {
+    setIsEditing(false);
+    setEditContent('');
+    setError(null);
+  };
+
+  const handleUpdate = async () => {
+    if (!onUpdate || editContent.trim() === content) {
+      setIsEditing(false);
+      return;
     }
-  }
 
-  const formatTimestamp = (timestamp: string) => {
-    const date = new Date(timestamp)
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-  }
+    try {
+      setIsUpdating(true);
+      setError(null);
+      await onUpdate(message.id, editContent.trim());
+      setIsEditing(false);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to update message';
+      setError({
+        code: 'UPDATE_FAILED',
+        message: errorMessage
+      });
+    } finally {
+      setIsUpdating(false);
+    }
+  };
 
-  const formatFileSize = (size: number) => {
-    if (size < 1024) return `${size} B`
-    if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`
-    return `${(size / (1024 * 1024)).toFixed(1)} MB`
-  }
-
-  const isImageFile = (filename: string) => {
-    const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp']
-    return imageExtensions.some(ext => filename.toLowerCase().endsWith(ext))
-  }
-
-  const handleImageError = (attachmentId: string) => {
-    setImageError(prev => ({ ...prev, [attachmentId]: true }))
-    setImageLoading(prev => ({ ...prev, [attachmentId]: false }))
-  }
-
-  const handleImageLoad = (attachmentId: string) => {
-    setImageLoading(prev => ({ ...prev, [attachmentId]: false }))
-  }
+  const handleRetry = async () => {
+    if (error) {
+      setError(null);
+      await handleUpdate();
+    }
+  };
 
   return (
-    <div className={`flex ${isOwnMessage ? 'justify-end' : 'justify-start'}`}>
-      <div className={`max-w-[70%] ${isOwnMessage ? 'bg-blue-500 text-white' : 'bg-gray-100 text-black'} rounded-lg p-3 group`}>
-        {!isOwnMessage && (
-          <div className="text-sm font-medium mb-1">
-            {user.username || 'Unknown User'}
+    <div
+      className={`flex items-start space-x-3 group ${
+        isOptimistic ? 'opacity-70' : ''
+      }`}
+    >
+      <div className="relative flex-shrink-0">
+        {message.user.avatar_url ? (
+          <img
+            src={message.user.avatar_url}
+            alt={message.user.username}
+            className="w-10 h-10 rounded-full"
+          />
+        ) : (
+          <div className="w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center">
+            <span className="text-indigo-700 font-medium">
+              {message.user.username.charAt(0).toUpperCase()}
+            </span>
           </div>
         )}
-        
-        <div className="relative">
-          {isEditing ? (
-            <div className="flex flex-col gap-2">
-              <input
-                type="text"
-                value={editedContent}
-                onChange={(e) => setEditedContent(e.target.value)}
-                className="w-full bg-white/10 border border-white/20 rounded px-2 py-1 text-inherit"
-                autoFocus
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault()
-                    handleEdit()
-                  } else if (e.key === 'Escape') {
-                    setIsEditing(false)
-                  }
-                }}
-              />
-              <div className="flex gap-1">
-                <button
-                  onClick={handleEdit}
-                  className="p-1 bg-black/10 hover:bg-transparent rounded transition-colors"
-                  aria-label="Save edit"
-                >
-                  <Check className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={() => setIsEditing(false)}
-                  className="p-1 bg-black/10 hover:bg-transparent rounded transition-colors"
-                  aria-label="Cancel edit"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
+        <UserPresence
+          userId={message.user_id}
+          size="small"
+          className="absolute -bottom-1 -right-1"
+        />
+      </div>
+
+      <div className="flex-1 min-w-0">
+        <div className="flex items-baseline justify-between">
+          <div className="flex items-center space-x-2">
+            <span className="font-medium text-gray-900">
+              {message.user.username}
+            </span>
+            <span className="text-sm text-gray-500">
+              {new Date(message.created_at).toLocaleTimeString()}
+            </span>
+          </div>
+          {isCurrentUser && !isOptimistic && (
+            <div className="opacity-0 group-hover:opacity-100 transition-opacity">
+              <button
+                onClick={handleEdit}
+                disabled={isEditing || isUpdating}
+                className="text-sm text-gray-500 hover:text-gray-700"
+                aria-label="Edit message"
+              >
+                Edit
+              </button>
             </div>
-          ) : (
-            <>
-              <div className="break-words">{messageContent}</div>
-              {isOwnMessage && onEdit && !message.attachments?.length && (
-                <button
-                  onClick={() => {
-                    setEditedContent(messageContent)
-                    setIsEditing(true)
-                  }}
-                  className="absolute right-1 top-0 p-1.5 rounded-full opacity-100 hover:opacity-30 transition-opacity bg-black/10 hover:bg-transparent"
-                  aria-label="Edit message"
-                >
-                  <Pencil className="w-3.5 h-3.5" />
-                </button>
-              )}
-            </>
           )}
         </div>
-            
-        {message.attachments && message.attachments.length > 0 && (
-          <div className="mt-2 space-y-2">
-            {message.attachments.map((attachment) => {
-              const isImage = isImageFile(attachment.filename)
-              const isLoading = imageLoading[attachment.id]
-              const hasError = imageError[attachment.id]
-
-              return (
-                <div key={attachment.id} className="group relative">
-                  {isImage && !hasError ? (
-                    <div className="relative min-h-[100px] bg-gray-100 rounded-lg overflow-hidden">
-                      {isLoading && (
-                        <div className="absolute inset-0 flex items-center justify-center">
-                          <Loader2 className="w-6 h-6 animate-spin" />
-                        </div>
-                      )}
-                      <img
-                        src={attachment.url}
-                        alt={attachment.filename}
-                        className={`max-w-full rounded-lg cursor-pointer hover:opacity-90 transition-opacity ${isLoading ? 'opacity-0' : 'opacity-100'}`}
-                        onClick={() => window.open(attachment.url, '_blank')}
-                        onError={() => handleImageError(attachment.id)}
-                        onLoad={() => handleImageLoad(attachment.id)}
-                        onLoadStart={() => setImageLoading(prev => ({ ...prev, [attachment.id]: true }))}
+        
+        {isEditing ? (
+          <div className="mt-1 space-y-2">
+            <textarea
+              value={editContent}
+              onChange={(e) => setEditContent(e.target.value)}
+              className="w-full px-3 py-2 text-sm border rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              rows={3}
+              disabled={isUpdating}
+              aria-label="Edit message content"
+            />
+            {error && (
+              <div 
+                className="text-sm text-red-500 flex items-center justify-between"
+                role="alert"
+              >
+                <span>{error.message}</span>
+                <button
+                  onClick={handleRetry}
+                  className="text-red-600 hover:text-red-700 font-medium"
+                  aria-label="Retry update"
+                >
+                  Retry
+                </button>
+              </div>
+            )}
+            <div className="flex space-x-2">
+              <button
+                onClick={handleUpdate}
+                disabled={isUpdating || editContent.trim() === content}
+                className="px-3 py-1 text-sm text-white bg-indigo-600 rounded-md hover:bg-indigo-700 disabled:opacity-50"
+                aria-label={isUpdating ? 'Saving message' : 'Save message'}
+              >
+                {isUpdating ? 'Saving...' : 'Save'}
+              </button>
+              <button
+                onClick={handleCancelEdit}
+                disabled={isUpdating}
+                className="px-3 py-1 text-sm text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200"
+                aria-label="Cancel editing"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="mt-1">
+            <p className="text-gray-900 whitespace-pre-wrap break-words">
+              {content}
+            </p>
+            {message.attachments?.length > 0 && (
+              <div className="mt-2 space-y-2">
+                {message.attachments.map((attachment) => (
+                  <div
+                    key={attachment.id}
+                    className="inline-flex items-center space-x-2 px-3 py-1 bg-gray-100 rounded-md"
+                  >
+                    <svg
+                      className="w-4 h-4 text-gray-500"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                      aria-hidden="true"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"
                       />
-                      {isOwnMessage && onDeleteAttachment && (
-                        <button
-                          onClick={() => onDeleteAttachment(attachment.id)}
-                          className="absolute top-2 right-2 bg-red-500 text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-                          aria-label="Delete attachment"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-2 group-hover:bg-opacity-50 transition-colors rounded p-1">
-                      {hasError ? <ImageIcon className="w-4 h-4" /> : <FileIcon className="w-4 h-4" />}
-                      <a
-                        href={attachment.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-sm underline"
-                      >
-                        {attachment.filename} ({formatFileSize(attachment.size)})
-                      </a>
-                      {isOwnMessage && onDeleteAttachment && (
-                        <button
-                          onClick={() => onDeleteAttachment(attachment.id)}
-                          className="text-red-500 hover:text-red-700"
-                          aria-label="Delete attachment"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )
-            })}
+                    </svg>
+                    <a
+                      href={attachment.file_path}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm text-indigo-600 hover:text-indigo-700"
+                      aria-label={`Download ${attachment.file_name || 'attachment'}`}
+                    >
+                      {attachment.file_name || 'Attachment'}
+                    </a>
+                  </div>
+                ))}
+              </div>
+            )}
+            {isOptimistic && (
+              <div 
+                className="mt-1 text-sm text-gray-500"
+                aria-live="polite"
+              >
+                Sending...
+              </div>
+            )}
           </div>
         )}
-        
-        <div className="text-xs mt-1 opacity-70">
-          {formatTimestamp(timestamp)}
-        </div>
       </div>
     </div>
-  )
-} 
+  );
+});
+
+export const MessageBubble = memo(function MessageBubbleWrapper(props: MessageBubbleProps) {
+  return (
+    <ErrorBoundary
+      fallback={
+        <div className="p-4 text-sm text-red-500 bg-red-50 rounded-lg">
+          Failed to render message. Please try refreshing the page.
+        </div>
+      }
+    >
+      <MessageBubbleContent {...props} />
+    </ErrorBoundary>
+  );
+}); 

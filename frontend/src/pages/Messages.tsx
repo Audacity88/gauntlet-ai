@@ -2,8 +2,10 @@ import { useState, useEffect } from 'react'
 import { useChannels } from '../hooks/useChannels'
 import { useDirectMessages } from '../hooks/useDirectMessages'
 import { MessageList } from '../components/MessageList'
+import { Channel, User } from '../types/models'
+import { useAuth } from '../hooks/useAuth'
+import { useUserCache } from '../hooks/useUserCache'
 import { supabase } from '../lib/supabaseClient'
-import { Channel, User } from '../types/schema'
 
 type ChatType = 'channel' | 'dm'
 
@@ -13,9 +15,11 @@ interface ChatTarget {
   name: string
 }
 
-export function Messages() {
+export default function Messages() {
   const [currentChat, setCurrentChat] = useState<ChatTarget | null>(null)
   const [dmUsernames, setDmUsernames] = useState<Record<string, string>>({})
+  const { user: currentUser } = useAuth()
+  const { getUser } = useUserCache()
   const { 
     channels, 
     isLoading: channelsLoading, 
@@ -24,19 +28,12 @@ export function Messages() {
     deleteChannel
   } = useChannels()
   const {
-    channels: dmChannels,
-    isLoading: dmsLoading,
+    conversations: dmChannels,
+    loading: dmsLoading,
     error: dmsError,
-    createDirectMessage
+    createDirectMessage,
+    refresh: refreshDirectMessages
   } = useDirectMessages()
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null)
-
-  // Get current user ID on mount
-  useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      setCurrentUserId(user?.id || null)
-    })
-  }, [])
 
   const handleCreateChannel = async () => {
     const slug = prompt('Enter channel name:')
@@ -56,14 +53,9 @@ export function Messages() {
     
     try {
       const channelId = await createDirectMessage(username)
-      
-      const { data: user, error: userError } = await supabase
-        .from('profiles')
-        .select('username, full_name')
-        .eq('username', username)
-        .single()
+      const user = getUser(username)
 
-      if (userError || !user) {
+      if (!user) {
         throw new Error('Could not find user')
       }
 
@@ -92,19 +84,21 @@ export function Messages() {
     }
   }
 
-  const getOtherUser = async (members: { user: User }[]) => {
-    const { data: { user } } = await supabase.auth.getUser()
-    return members.find(m => m.user.id !== user?.id)?.user
+  const getOtherUser = (members: { user: User }[]) => {
+    if (!currentUser) return null
+    return members.find(m => m.user.id !== currentUser.id)?.user
   }
 
   const handleChannelClick = async (channel: Channel) => {
     try {
+      if (!currentUser) return;
+
       // Check if user is already a member
       const { data: membership, error: membershipError } = await supabase
         .from('channel_members')
         .select('*')
         .eq('channel_id', channel.id)
-        .eq('user_id', currentUserId)
+        .eq('user_id', currentUser.id)
         .single()
 
       if (membershipError && membershipError.code !== 'PGRST116') {
@@ -118,8 +112,8 @@ export function Messages() {
           .from('channel_members')
           .insert({
             channel_id: channel.id,
-            user_id: currentUserId,
-            profile_id: currentUserId,  // Add profile_id
+            user_id: currentUser.id,
+            profile_id: currentUser.id,
             role: 'member'
           })
 
@@ -144,6 +138,8 @@ export function Messages() {
 
   useEffect(() => {
     // Load DM usernames
+    if (!dmChannels) return;
+    
     dmChannels.forEach(async (dm) => {
       const otherUser = await getOtherUser(dm.members)
       if (otherUser) {
@@ -177,7 +173,7 @@ export function Messages() {
             <div className="text-red-500">Error: {channelsError.message}</div>
           ) : (
             <div className="space-y-2">
-              {channels.map(channel => (
+              {Array.from(channels.values()).map(channel => (
                 <div 
                   key={channel.id}
                   className="flex items-center justify-between group"
@@ -192,7 +188,7 @@ export function Messages() {
                   >
                     # {channel.slug}
                   </button>
-                  {currentUserId && channel.created_by === currentUserId && (
+                  {currentUser && channel.created_by === currentUser.id && (
                     <button
                       onClick={() => handleDeleteChannel(channel.id)}
                       className="hidden group-hover:block px-2 py-1 text-red-500 hover:text-red-700 bg-indigo-50 hover:bg-indigo-100 rounded-r"
@@ -222,37 +218,41 @@ export function Messages() {
             <div className="text-black">Loading messages...</div>
           ) : dmsError ? (
             <div className="text-red-500">Error: {dmsError.message}</div>
+          ) : !dmChannels || dmChannels.size === 0 ? (
+            <div className="text-gray-500">No direct messages yet</div>
           ) : (
             <div className="space-y-2">
-              {dmChannels.map(dm => (
-                <button
-                  key={dm.id}
-                  onClick={() => setCurrentChat({
-                    type: 'dm',
-                    id: dm.id,
-                    name: dmUsernames[dm.id] || 'Loading...'
-                  })}
-                  className={`w-full text-left px-2 py-1 rounded text-black bg-indigo-50 hover:bg-indigo-100 ${
-                    currentChat?.id === dm.id
-                      ? 'bg-indigo-100'
-                      : ''
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-black">{dmUsernames[dm.id] || 'Loading...'}</span>
-                    {(dm.unread_count ?? 0) > 0 && (
-                      <span className="bg-indigo-500 text-white text-xs px-1.5 rounded-full">
-                        {dm.unread_count}
-                      </span>
-                    )}
-                  </div>
-                  {dm.last_message && (
-                    <div className="text-xs text-gray-600 truncate">
-                      {dm.last_message.content}
+              {Array.from(dmChannels.values())
+                .filter(dm => dm && dm.id && dm.otherUser) // Filter out invalid DMs
+                .map(dm => (
+                  <button
+                    key={dm.id}
+                    onClick={() => setCurrentChat({
+                      type: 'dm',
+                      id: dm.id,
+                      name: dm.otherUser?.username || 'Loading...'
+                    })}
+                    className={`w-full text-left px-2 py-1 rounded text-black bg-indigo-50 hover:bg-indigo-100 ${
+                      currentChat?.id === dm.id
+                        ? 'bg-indigo-100'
+                        : ''
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-black">{dm.otherUser?.username || 'Loading...'}</span>
+                      {(dm.unread_count ?? 0) > 0 && (
+                        <span className="bg-indigo-500 text-white text-xs px-1.5 rounded-full">
+                          {dm.unread_count}
+                        </span>
+                      )}
                     </div>
-                  )}
-                </button>
-              ))}
+                    {dm.messages?.[0] && (
+                      <div className="text-xs text-gray-600 truncate">
+                        {dm.messages[0].content}
+                      </div>
+                    )}
+                  </button>
+                ))}
             </div>
           )}
         </div>

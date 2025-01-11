@@ -2,8 +2,8 @@ import { useState, useEffect } from 'react'
 import { useChannels } from '../hooks/useChannels'
 import { useDirectMessages } from '../hooks/useDirectMessages'
 import { MessageList } from '../components/MessageList'
-import { supabase } from '../lib/supabaseClient'
-import { User } from '../types/schema'
+import { User } from '../types/models'
+import { useAuth } from '../hooks/useAuth'
 
 type ChatType = 'channel' | 'dm'
 
@@ -13,9 +13,9 @@ interface ChatTarget {
   name: string
 }
 
-export function Chat() {
+export default function Chat() {
   const [currentChat, setCurrentChat] = useState<ChatTarget | null>(null)
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null)
+  const { user: currentUser } = useAuth()
   const { 
     channels, 
     isLoading: channelsLoading, 
@@ -30,13 +30,6 @@ export function Chat() {
     createDirectMessage,
     markChannelAsRead
   } = useDirectMessages()
-
-  // Get current user ID on mount
-  useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      setCurrentUserId(user?.id || null)
-    })
-  }, [])
 
   const handleCreateChannel = async () => {
     const slug = prompt('Enter channel name:')
@@ -159,7 +152,7 @@ export function Chat() {
           ) : (
             <div className="space-y-2">
               {dmChannels.map(dm => {
-                const otherMember = dm.members.find(m => m.user.id !== currentUserId)
+                const otherMember = dm.members.find((m: { user: User }) => m.user.id !== currentUserId)
                 return (
                   <button
                     key={dm.id}

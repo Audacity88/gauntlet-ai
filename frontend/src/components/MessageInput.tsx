@@ -16,7 +16,7 @@ export function MessageInput({
   isUploading 
 }: MessageInputProps) {
   const [content, setContent] = useState('')
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<Error | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const handleSubmit = async (e: FormEvent) => {
@@ -27,9 +27,8 @@ export function MessageInput({
     try {
       await onSubmit(content)
       setContent('')
-    } catch (error) {
-      console.error('Error sending message:', error)
-      setError(error instanceof Error ? error.message : 'Failed to send message')
+    } catch (err) {
+      setError(err instanceof Error ? err : new Error('Failed to send message'))
     }
   }
 
@@ -37,7 +36,7 @@ export function MessageInput({
     <form onSubmit={handleSubmit} className="space-y-4">
       {error && (
         <div className="px-2 text-red-500 text-sm">
-          {error}
+          {error.message}
         </div>
       )}
       

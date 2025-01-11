@@ -1,69 +1,64 @@
 import { useEffect, useState } from 'react'
 import { useAuth } from '../hooks/useAuth'
 import { MessageList } from './MessageList'
-import { supabase } from '../lib/supabaseClient'
+import { useChannelStore } from '../stores/channelStore'
+import { getChannelProcessor } from '../utils/ChannelProcessor'
+import type { Channel } from '../types/models'
 
 export function TestMessaging() {
   const { user } = useAuth()
-  const [channelId, setChannelId] = useState<number | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const [channelId, setChannelId] = useState<string | null>(null)
+  const [error, setError] = useState<Error | null>(null)
+  const { channels, setChannels, createChannel } = useChannelStore()
+  const channelProcessor = getChannelProcessor()
 
   // Create a test channel on component mount
   useEffect(() => {
     if (!user) return
 
-    const createTestChannel = async () => {
+    const setupTestChannel = async () => {
       try {
         // First check if we already have a test channel
-        const { data: existingChannels, error: searchError } = await supabase
-          .from('channels')
-          .select('*')
-          .eq('slug', 'test-channel')
-          .eq('created_by', user.id)
-          .limit(1)
+        const existingChannel = Array.from(channels.values()).find(
+          channel => channel.slug === 'test-channel' && channel.created_by === user.id
+        )
 
-        if (searchError) throw searchError
-
-        let channel = existingChannels?.[0]
-
-        if (!channel) {
-          // Create new channel
-          const { data: newChannel, error: channelError } = await supabase
-            .from('channels')
-            .insert({
-              slug: 'test-channel',
-              created_by: user.id
-            })
-            .select()
-            .single()
-
-          if (channelError) throw channelError
-          console.log('✅ Created test channel:', newChannel)
-          channel = newChannel
-        } else {
-          console.log('✅ Found existing test channel:', channel)
+        if (existingChannel) {
+          setChannelId(existingChannel.id)
+          return
         }
 
-        setChannelId(channel.id)
+        // Create new channel
+        const channel = await createChannel({
+          slug: 'test-channel',
+          created_by: user.id
+        })
+
+        if (channel) {
+          const processedChannel = await channelProcessor.processChannel(channel)
+          setChannels(prev => new Map(prev).set(processedChannel.id, processedChannel))
+          setChannelId(channel.id)
+        }
 
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to create test channel')
-        console.error('❌ Error:', err)
+        const error = err instanceof Error ? err : new Error('Failed to create test channel')
+        setError(error)
+        console.error('Error creating test channel:', error)
       }
     }
 
-    createTestChannel()
+    setupTestChannel()
 
     // Cleanup function
     return () => {
       setChannelId(null)
     }
-  }, [user])
+  }, [user, channels, channelProcessor, setChannels, createChannel])
 
   if (error) {
     return (
       <div className="p-4 text-red-500">
-        Error: {error}
+        Error: {error.message}
       </div>
     )
   }
