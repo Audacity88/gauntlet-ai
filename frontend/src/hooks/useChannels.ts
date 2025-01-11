@@ -22,44 +22,97 @@ export function useChannels() {
 
   // Load channels on mount
   useEffect(() => {
-    loadChannels()
+    let mounted = true;
     
-    // Subscribe to channel changes
-    const channel = supabase
-      .channel('public:channels')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'channels'
-        },
-        async (payload) => {
-          try {
-            if (payload.eventType === 'INSERT') {
-              const processedChannel = await channelProcessor.processChannel(payload.new as Channel)
-              setChannels(prev => [...Array.from(prev.values()), processedChannel])
-            } else if (payload.eventType === 'UPDATE') {
-              const processedChannel = await channelProcessor.processChannel(payload.new as Channel)
-              setChannels(prev => {
-                const channels = Array.from(prev.values())
-                const index = channels.findIndex(ch => ch.id === processedChannel.id)
-                if (index === -1) return channels
-                channels[index] = processedChannel
-                return channels
-              })
-            } else if (payload.eventType === 'DELETE') {
-              setChannels(prev => Array.from(prev.values()).filter(ch => ch.id !== payload.old.id))
-            }
-          } catch (err) {
-            console.error('Error processing channel change:', err)
-          }
+    const loadAndSubscribe = async () => {
+      try {
+        setLoading(true)
+        setError(null)
+
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user || !mounted) {
+          setLoading(false)
+          return
         }
-      )
-      .subscribe()
+
+        // Get all channels and their creators
+        const { data, error: loadError } = await supabase
+          .from('channels')
+          .select(`
+            *,
+            creator:profiles!channels_created_by_fkey(*)
+          `)
+          .order('inserted_at', { ascending: false })
+
+        if (loadError) throw loadError
+
+        // Process channels with ChannelProcessor
+        const processedChannels = await Promise.all(
+          (data || []).map(channel => channelProcessor.processChannel(channel))
+        )
+        
+        // Only update channels if we have data and component is still mounted
+        if (mounted && processedChannels.length > 0) {
+          setChannels(() => processedChannels.filter(Boolean))
+        }
+
+        // Subscribe to channel changes
+        const channel = supabase
+          .channel('public:channels')
+          .on(
+            'postgres_changes',
+            {
+              event: '*',
+              schema: 'public',
+              table: 'channels'
+            },
+            async (payload) => {
+              if (!mounted) return;
+              
+              try {
+                if (payload.eventType === 'INSERT') {
+                  const processedChannel = await channelProcessor.processChannel(payload.new as Channel)
+                  setChannels(prev => [...Array.from(prev.values()), processedChannel])
+                } else if (payload.eventType === 'UPDATE') {
+                  const processedChannel = await channelProcessor.processChannel(payload.new as Channel)
+                  setChannels(prev => {
+                    const channels = Array.from(prev.values())
+                    const index = channels.findIndex(ch => ch.id === processedChannel.id)
+                    if (index === -1) return channels
+                    channels[index] = processedChannel
+                    return channels
+                  })
+                } else if (payload.eventType === 'DELETE') {
+                  setChannels(prev => Array.from(prev.values()).filter(ch => ch.id !== payload.old.id))
+                }
+              } catch (err) {
+                console.error('Error processing channel change:', err)
+              }
+            }
+          )
+          .subscribe()
+
+        return () => {
+          mounted = false;
+          channel.unsubscribe();
+        }
+
+      } catch (err) {
+        console.error('Failed to load channels:', err)
+        if (mounted) {
+          setError(err instanceof Error ? err : new Error('Failed to load channels'))
+        }
+      } finally {
+        if (mounted) {
+          setLoading(false)
+        }
+      }
+    }
+
+    loadAndSubscribe();
 
     return () => {
-      channel.unsubscribe()
+      mounted = false;
     }
   }, [])
 
@@ -69,7 +122,10 @@ export function useChannels() {
       setError(null)
 
       const { data: { user } } = await supabase.auth.getUser()
-      if (!user) throw new Error('No authenticated user')
+      if (!user) {
+        setLoading(false)
+        return
+      }
 
       // Get all channels and their creators
       const { data, error: loadError } = await supabase
@@ -87,7 +143,10 @@ export function useChannels() {
         (data || []).map(channel => channelProcessor.processChannel(channel))
       )
       
-      setChannels(() => processedChannels.filter(Boolean))
+      // Only update channels if we have data
+      if (processedChannels.length > 0) {
+        setChannels(() => processedChannels.filter(Boolean))
+      }
 
     } catch (err) {
       console.error('Failed to load channels:', err)

@@ -98,22 +98,20 @@ export const useChannelStore = create<ChannelState>()(
           })),
 
         // Batch operations
-        setChannels: (channelsOrUpdater: ChannelWithDetails[] | ((prev: Map<string, ChannelWithDetails>) => ChannelWithDetails[])) =>
+        setChannels: (channelsOrUpdater) =>
           set((state) => {
             const channels = typeof channelsOrUpdater === 'function' 
               ? channelsOrUpdater(state.channels)
               : channelsOrUpdater;
 
-            if (!channels) {
-              return {
-                channels: new Map(),
-                loading: false,
-                error: null
-              };
-            }
+            const newChannels = new Map(
+              (Array.isArray(channels) ? channels : [])
+                .filter(ch => ch && ch.id)
+                .map(ch => [ch.id, ch])
+            );
 
             return {
-              channels: new Map(channels.filter(ch => ch && ch.id).map(ch => [ch.id, ch])),
+              channels: newChannels,
               loading: false,
               error: null
             };
@@ -137,32 +135,47 @@ export const useChannelStore = create<ChannelState>()(
           getItem: (name) => {
             const str = localStorage.getItem(name);
             if (!str) return null;
-            const { state } = JSON.parse(str);
-            return {
-              state: {
-                ...state,
-                channels: new Map(state.channels?.__type === 'Map' ? state.channels.data : []),
-                optimisticChannels: new Map(state.optimisticChannels?.__type === 'Map' ? state.optimisticChannels.data : [])
-              }
-            };
+            
+            try {
+              const { state } = JSON.parse(str);
+              
+              // Convert serialized maps back to Map objects
+              const channels = new Map(
+                Array.isArray(state.channels) 
+                  ? state.channels 
+                  : state.channels?.data || []
+              );
+              
+              const optimisticChannels = new Map(
+                Array.isArray(state.optimisticChannels)
+                  ? state.optimisticChannels
+                  : state.optimisticChannels?.data || []
+              );
+
+              return {
+                state: {
+                  ...state,
+                  channels,
+                  optimisticChannels
+                }
+              };
+            } catch (err) {
+              console.error('Error parsing channel store:', err);
+              return null;
+            }
           },
           setItem: (name, value) => {
             const { state } = value;
             const serializedState = {
               ...state,
-              channels: {
-                __type: 'Map',
-                data: Array.from(state.channels.entries())
-              },
-              optimisticChannels: {
-                __type: 'Map',
-                data: Array.from(state.optimisticChannels.entries())
-              }
+              channels: Array.from(state.channels.entries()),
+              optimisticChannels: Array.from(state.optimisticChannels.entries())
             };
             localStorage.setItem(name, JSON.stringify({ state: serializedState }));
           },
           removeItem: (name) => localStorage.removeItem(name)
-        }
+        },
+        version: 1
       }
     ),
     { name: 'ChannelStore' }

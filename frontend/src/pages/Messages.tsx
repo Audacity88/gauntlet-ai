@@ -36,6 +36,10 @@ export default function Messages() {
   } = useDirectMessages()
 
   const handleCreateChannel = async () => {
+    if (!currentUser) {
+      alert('Please sign in to create a channel')
+      return
+    }
     const slug = prompt('Enter channel name:')
     if (slug) {
       try {
@@ -48,6 +52,10 @@ export default function Messages() {
   }
 
   const handleCreateDM = async () => {
+    if (!currentUser) {
+      alert('Please sign in to send direct messages')
+      return
+    }
     const username = prompt('Enter username to message:')
     if (!username) return
     
@@ -71,6 +79,10 @@ export default function Messages() {
   }
 
   const handleDeleteChannel = async (channelId: string) => {
+    if (!currentUser) {
+      alert('Please sign in to delete channels')
+      return
+    }
     if (confirm('Are you sure you want to delete this channel?')) {
       try {
         await deleteChannel(channelId)
@@ -90,50 +102,11 @@ export default function Messages() {
   }
 
   const handleChannelClick = async (channel: Channel) => {
-    try {
-      if (!currentUser) return;
-
-      // Check if user is already a member
-      const { data: membership, error: membershipError } = await supabase
-        .from('channel_members')
-        .select('*')
-        .eq('channel_id', channel.id)
-        .eq('user_id', currentUser.id)
-        .single()
-
-      if (membershipError && membershipError.code !== 'PGRST116') {
-        console.error('Error checking channel membership:', membershipError)
-        throw membershipError
-      }
-
-      // If not a member and channel is public, join it
-      if (!membership) {
-        const { error: joinError } = await supabase
-          .from('channel_members')
-          .insert({
-            channel_id: channel.id,
-            user_id: currentUser.id,
-            profile_id: currentUser.id,
-            role: 'member'
-          })
-
-        if (joinError) {
-          console.error('Error joining channel:', joinError)
-          throw joinError
-        }
-
-        console.log('Successfully joined channel')
-      }
-
-      setCurrentChat({
-        type: 'channel',
-        id: channel.id,
-        name: channel.slug
-      })
-    } catch (err) {
-      console.error('Failed to handle channel click:', err)
-      alert('Failed to join channel. Please try again.')
-    }
+    setCurrentChat({
+      type: 'channel',
+      id: channel.id,
+      name: channel.slug
+    })
   }
 
   useEffect(() => {
