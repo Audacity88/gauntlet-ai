@@ -1,3 +1,6 @@
+DROP FUNCTION update_message_with_attachment(uuid,jsonb);
+DROP FUNCTION update_dm_with_attachment(uuid,jsonb);
+
 -- Function to update message with attachment for channels
 CREATE OR REPLACE FUNCTION update_message_with_attachment(
     p_message_id UUID,
@@ -95,7 +98,3 @@ EXCEPTION
     WHEN undefined_object THEN
         NULL;
 END $$;
-
--- Enable realtime for messages and direct_messages
-ALTER PUBLICATION supabase_realtime ADD TABLE messages;
-ALTER PUBLICATION supabase_realtime ADD TABLE direct_messages;

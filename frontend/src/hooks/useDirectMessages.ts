@@ -199,36 +199,26 @@ export function useDirectMessages() {
       if (!user) throw new Error('No authenticated user')
 
       // Get the other user's profile from their username
+      console.log('Looking up user with username:', otherUsername)
       const { data: otherProfile, error: userError } = await supabase
         .from('profiles')
-        .select('id, username')
+        .select('id, username, full_name')
         .eq('username', otherUsername)
+        .not('id', 'eq', user.id)  // Make sure we don't match ourselves
         .single()
+
+      console.log('User lookup result:', { otherProfile, userError })
 
       if (userError || !otherProfile) {
         console.error('Error finding user:', userError)
-        throw new Error('User not found')
-      }
-
-      // Get our own profile
-      const { data: myProfile, error: myProfileError } = await supabase
-        .from('profiles')
-        .select('id')
-        .eq('id', user.id)
-        .single()
-
-      if (myProfileError || !myProfile) {
-        console.error('Error finding own profile:', myProfileError)
-        throw new Error('Profile not found')
+        throw new Error(userError?.message || `User "${otherUsername}" not found`)
       }
 
       // Use RPC to find or create DM channel
       const { data: result, error: rpcError } = await supabase
         .rpc('find_or_create_dm_channel', {
-          profile1_id: myProfile.id,
-          profile2_id: otherProfile.id,
-          user1_id: user.id,
-          user2_id: otherProfile.id
+          p_user_id: user.id,
+          p_other_user_id: otherProfile.id
         })
 
       if (rpcError) {

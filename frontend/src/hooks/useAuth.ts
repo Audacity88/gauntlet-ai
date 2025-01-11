@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { User } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabaseClient'
+import { User } from '../types/schema'
 
 export function useAuth() {
   const [user, setUser] = useState<User | null>(null)
@@ -9,14 +9,35 @@ export function useAuth() {
   useEffect(() => {
     // Get initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null)
+      if (session?.user) {
+        // Map Supabase user to our User type
+        setUser({
+          id: session.user.id,
+          username: session.user.user_metadata.username || session.user.email?.split('@')[0] || 'Unknown',
+          full_name: session.user.user_metadata.full_name || 'Unknown User',
+          avatar_url: session.user.user_metadata.avatar_url,
+          created_at: session.user.created_at,
+          updated_at: session.user.updated_at
+        })
+      }
       setLoading(false)
     })
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null)
-      setLoading(false)
+      if (session?.user) {
+        // Map Supabase user to our User type
+        setUser({
+          id: session.user.id,
+          username: session.user.user_metadata.username || session.user.email?.split('@')[0] || 'Unknown',
+          full_name: session.user.user_metadata.full_name || 'Unknown User',
+          avatar_url: session.user.user_metadata.avatar_url,
+          created_at: session.user.created_at,
+          updated_at: session.user.updated_at
+        })
+      } else {
+        setUser(null)
+      }
     })
 
     return () => {
@@ -24,11 +45,5 @@ export function useAuth() {
     }
   }, [])
 
-  return {
-    user,
-    loading,
-    signIn: supabase.auth.signInWithPassword,
-    signOut: () => supabase.auth.signOut(),
-    signUp: supabase.auth.signUp
-  }
+  return { user, loading }
 } 

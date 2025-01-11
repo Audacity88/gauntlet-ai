@@ -58,8 +58,8 @@ export function Messages() {
       const channelId = await createDirectMessage(username)
       
       const { data: user, error: userError } = await supabase
-        .from('users')
-        .select('username')
+        .from('profiles')
+        .select('username, full_name')
         .eq('username', username)
         .single()
 
@@ -70,7 +70,7 @@ export function Messages() {
       setCurrentChat({
         type: 'dm',
         id: channelId,
-        name: user.username || 'Unknown User'
+        name: user.username || user.full_name || 'Unknown User'
       })
     } catch (err) {
       console.error('Failed to create DM:', err)

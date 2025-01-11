@@ -1,11 +1,11 @@
 // Database table interfaces
 export interface User {
-  id: string  // UUID
-  username: string | null
-  full_name: string | null
+  id: string
+  username: string
+  full_name: string
   avatar_url: string | null
-  created_at: string
-  updated_at: string
+  created_at?: string
+  updated_at?: string
 }
 
 export interface Channel {
@@ -25,24 +25,28 @@ export interface ChannelMember {
 }
 
 export interface Message {
-  id: string  // UUID
-  channel_id: string  // UUID
-  user_id: string  // UUID
-  profile_id: string  // UUID
-  message: string
-  inserted_at: string
-  content?: never  // Ensure content property doesn't exist
+  id: string
+  channel_id: string
+  user_id: string
+  profile_id: string
+  content?: string
+  message?: string
   attachments?: MessageAttachment[]
+  created_at: string
+  updated_at: string
+  inserted_at?: string
 }
 
 export interface MessageAttachment {
-  id: string  // UUID
-  message_id: string  // UUID
+  id: string
+  message_id: string
   filename: string
   file_path: string
-  file_size: number
   content_type: string
+  size: number
+  url: string
   created_at: string
+  updated_at: string
 }
 
 // Direct Message interfaces
@@ -62,15 +66,14 @@ export interface DirectMessageMember {
 }
 
 export interface DirectMessage {
-  id: string  // UUID
-  channel_id: string  // UUID
-  user_id: string  // UUID
-  profile_id: string  // UUID
+  id: string
+  channel_id: string
+  user_id: string
+  profile_id: string
   content: string
+  attachments?: MessageAttachment[]
   created_at: string
   updated_at: string
-  message?: never  // Ensure message property doesn't exist
-  attachments?: MessageAttachment[]
 }
 
 // Extended interfaces for UI components
@@ -80,14 +83,18 @@ export interface ChannelWithDetails extends Channel {
 
 export interface MessageWithUser extends Message {
   user: User
+  profile: User
 }
 
 export interface DirectMessageWithUser extends DirectMessage {
   user: User
+  profile: User
 }
 
 export interface DirectMessageChannelWithMembers extends DirectMessageChannel {
   members: (DirectMessageMember & { user: User })[]
   last_message?: DirectMessage
   unread_count?: number
-} 
+}
+
+export type AnyMessage = MessageWithUser | DirectMessageWithUser; 

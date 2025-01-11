@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
-import { Message, MessageWithUser, DirectMessage, DirectMessageWithUser, AnyMessage } from '../types/messages'
-import { User } from '../types/schema'
+import { Message, MessageWithUser, DirectMessage, DirectMessageWithUser, User, MessageAttachment } from '../types/schema'
 import { useAuth } from '../hooks/useAuth'
 
 interface UseRealtimeMessagesProps {
@@ -10,7 +9,9 @@ interface UseRealtimeMessagesProps {
   searchQuery?: string
 }
 
-type QueuedMessage = {
+type AnyMessage = MessageWithUser | DirectMessageWithUser;
+
+interface QueuedMessage {
   id: string
   channel_id: string
   user_id: string
@@ -21,6 +22,7 @@ type QueuedMessage = {
   inserted_at?: string
   updated_at?: string
   user?: User
+  attachments?: MessageAttachment[] | string | null
   eventType: 'INSERT' | 'UPDATE' | 'DELETE'
 }
 
@@ -120,8 +122,23 @@ export function useRealtimeMessages({ channelId, chatType = 'channel', searchQue
 
   // Process message immediately
   const processMessage = useCallback((newMessage: QueuedMessage) => {
-    if (!newMessage?.id || processedMessages.current.has(newMessage.id)) {
-      console.log('Message already processed or invalid:', newMessage?.id)
+    console.log('=== Processing new message ===', { 
+      messageId: newMessage.id,
+      eventType: newMessage.eventType,
+      content: newMessage.content || newMessage.message,
+      attachments: newMessage.attachments
+    })
+    
+    // If message has attachments, trigger a reload of the channel
+    if (newMessage.attachments) {
+      console.log('Message has attachments, reloading channel...')
+      loadMessages()
+      return
+    }
+    
+    // Don't process messages we've already seen
+    if (processedMessages.current.has(newMessage.id)) {
+      console.log('Message already processed:', newMessage.id)
       return
     }
 
@@ -143,140 +160,124 @@ export function useRealtimeMessages({ channelId, chatType = 'channel', searchQue
         ? newMessage.created_at || new Date().toISOString()
         : newMessage.inserted_at || new Date().toISOString()
         
-        const messageObj = {
-          id: newMessage.id,
-          channel_id: newMessage.channel_id,
-          user_id: newMessage.user_id,
-          profile_id: newMessage.profile_id,
+      // Parse attachments if they exist
+      let attachments: MessageAttachment[] = []
+      if (newMessage.attachments) {
+        try {
+          attachments = typeof newMessage.attachments === 'string' 
+            ? JSON.parse(newMessage.attachments)
+            : Array.isArray(newMessage.attachments) 
+              ? newMessage.attachments 
+              : []
+        } catch (e) {
+          console.warn('Failed to parse attachments:', e)
+        }
+      }
+
+      // Check if we already have a temporary version of this message
+      const tempMessageId = `temp-${newMessage.id}`
+      const existingTempMessage = messageMap.get(tempMessageId)
+
+      // If we have a temp message, use its user data
+      const messageObj = {
+        id: newMessage.id,
+        channel_id: newMessage.channel_id,
+        user_id: newMessage.user_id,
+        profile_id: newMessage.profile_id,
         content: messageContent,
         message: messageContent,
         created_at: chatType === 'dm' ? timestamp : undefined,
         inserted_at: chatType === 'dm' ? undefined : timestamp,
         updated_at: newMessage.updated_at || timestamp,
-          user: messageUser || newMessage.user || {
-            id: newMessage.user_id,
-            username: 'Loading...',
-            full_name: 'Loading...',
-            avatar_url: null,
+        attachments,
+        user: messageUser || existingTempMessage?.user || newMessage.user || {
+          id: newMessage.user_id,
+          username: 'Loading...',
+          full_name: 'Loading...',
+          avatar_url: null,
           created_at: timestamp,
           updated_at: timestamp
-          }
-        } as AnyMessage
+        },
+        profile: messageUser || existingTempMessage?.profile || newMessage.user || {
+          id: newMessage.user_id,
+          username: 'Loading...',
+          full_name: 'Loading...',
+          avatar_url: null,
+          created_at: timestamp,
+          updated_at: timestamp
+        }
+      } as AnyMessage
 
-        messageMap.set(newMessage.id, messageObj)
-      processedMessages.current.add(newMessage.id)
+      // For updates, preserve existing message data that wasn't included in the update
+      if (newMessage.eventType === 'UPDATE') {
+        const existingMessage = messageMap.get(newMessage.id)
+        if (existingMessage) {
+          messageObj.attachments = attachments.length > 0 ? attachments : existingMessage.attachments
+          messageObj.user = existingMessage.user
+          messageObj.profile = existingMessage.profile
+        }
+      }
+
+      // Only remove the temporary message if we have all the data we need
+      if (messageObj.user.username !== 'Loading...' && messageObj.profile.username !== 'Loading...') {
+        messageMap.delete(tempMessageId)
+      }
+      
+      // Add the real message
+      messageMap.set(newMessage.id, messageObj)
 
       // Convert map back to array and sort
       const updated = Array.from(messageMap.values())
       updated.sort((a, b) => {
-        const aTime = chatType === 'dm' 
-          ? (a as DirectMessageWithUser).created_at || ''
-          : (a as MessageWithUser).inserted_at || ''
-        const bTime = chatType === 'dm' 
-          ? (b as DirectMessageWithUser).created_at || ''
-          : (b as MessageWithUser).inserted_at || ''
-        return new Date(aTime).getTime() - new Date(bTime).getTime()
+        const getTime = (msg: AnyMessage) => {
+          const timestamp = chatType === 'dm' ? msg.created_at : ('inserted_at' in msg ? msg.inserted_at : msg.created_at)
+          return new Date(timestamp || new Date().toISOString()).getTime()
+        }
+        return getTime(a) - getTime(b)
       })
 
       return updated
     })
+
+    // Mark message as processed
+    processedMessages.current.add(newMessage.id)
   }, [chatType, getUserById, queueUserLoad])
 
   // Update realtime subscription setup
-  useEffect(
-    () => {
-      if (!channelId || !user) {
-        console.log('No channelId or user, skipping subscription')
-        return
-      }
-
-      // Clear processed messages when changing channels
-      processedMessages.current.clear()
-
-      const table = chatType === 'dm' ? 'direct_messages' : 'messages'
-      console.log('Setting up realtime subscription for:', { table, channelId })
-      
-      const channel = supabase
-        .channel(`messages:${channelId}`)
-        .on(
-          'postgres_changes',
-          {
-            event: '*',
-            schema: 'public',
-            table: table,
-            filter: `channel_id=eq.${channelId}`
-          },
-          async (payload) => {
-            console.log('Received realtime event:', payload)
-            if (payload.new && 'id' in payload.new) {
-              const messageId = payload.new.id as string
-              
-              if (!processedMessages.current.has(messageId)) {
-                console.log('Processing new message:', payload.new)
-                
-                // Get the user from cache or fetch if needed
-                const messageUserId = payload.new.user_id as string
-                let messageUser = getUserById(messageUserId)
-
-                if (!messageUser) {
-                  console.log('Fetching user data for:', messageUserId)
-                  // Only fetch the user data if we don't have it
-                  const { data: userData, error: userError } = await supabase
-                    .from('profiles')
-                    .select('*')
-                    .eq('id', messageUserId)
-                    .single()
-
-                  if (!userError && userData) {
-                    console.log('Found user data:', userData)
-                    messageUser = userData
-                    // Update user cache
-                    setUsers(prev => {
-                      const updated = [...prev]
-                      const index = updated.findIndex(u => u.id === userData.id)
-                      if (index === -1) {
-                        updated.push(userData)
-                      } else {
-                        updated[index] = userData
-                      }
-                      saveUsersToCache(updated)
-                      return updated
-                    })
-                  } else {
-                    console.error('Error fetching user data:', userError)
-                  }
-                }
-
-                const queuedMessage: QueuedMessage = {
-                  id: messageId,
-                  channel_id: payload.new.channel_id as string,
-                  user_id: messageUserId,
-                  profile_id: payload.new.profile_id as string,
-                  content: payload.new.content as string,
-                  message: payload.new.content as string,
-                  created_at: payload.new.created_at as string,
-                  inserted_at: payload.new.inserted_at as string,
-                  updated_at: payload.new.updated_at as string,
-                  user: messageUser,
-                  eventType: payload.eventType as 'INSERT' | 'UPDATE' | 'DELETE'
-                }
-                console.log('Processing message with user data:', queuedMessage)
-                processMessage(queuedMessage)
-              } else {
-                console.log('Skipping already processed message:', messageId)
-              }
+  useEffect(() => {
+    if (!channelId || !user) return
+    console.log('=== Setting up realtime subscription ===', { channelId, chatType })
+    
+    const table = chatType === 'dm' ? 'direct_messages' : 'messages'
+    const channel = supabase
+      .channel(`${table}:${channelId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: table,
+          filter: `channel_id=eq.${channelId}`
+        },
+        (payload) => {
+          console.log('Received realtime message:', payload)
+          if (payload.new && 'id' in payload.new) {
+            const messageId = payload.new.id as string
+            if (!processedMessages.current.has(messageId)) {
+              processMessage(payload.new as QueuedMessage)
             }
           }
-        )
-        .subscribe()
+        }
+      )
+      .subscribe((status) => {
+        console.log('Subscription status:', status)
+      })
 
-      return () => {
-        console.log('Cleaning up subscription for:', { channelId, chatType })
-        channel.unsubscribe()
-      }
-    },
-    [channelId, chatType, user, processMessage, getUserById, setUsers]
-  )
+    return () => {
+      console.log('Cleaning up subscription for:', { channelId, chatType })
+      supabase.removeChannel(channel)
+    }
+  }, [channelId, chatType, user, processMessage])
 
   // Load initial messages
   useEffect(() => {
@@ -292,10 +293,10 @@ export function useRealtimeMessages({ channelId, chatType = 'channel', searchQue
           .from(table)
           .select(`
             *,
-            user:profiles(*)
+            profile:profiles(*)
           `)
           .eq('channel_id', channelId)
-          .order('created_at', { ascending: true })
+          .order(chatType === 'dm' ? 'created_at' : 'inserted_at', { ascending: true })
           .limit(50)
 
         // Add search filter if query is provided
@@ -319,21 +320,37 @@ export function useRealtimeMessages({ channelId, chatType = 'channel', searchQue
           }
 
           // Transform messages to have consistent field names
-          const transformedMessages = data.map(msg => ({
-            ...msg,
-            content: msg.content,
-            message: msg.content,
-            created_at: msg.created_at,
-            updated_at: msg.updated_at || msg.created_at,
-            user: msg.user || {
-              id: msg.user_id,
-              username: 'Loading...',
-              full_name: 'Loading...',
-              avatar_url: null,
-              created_at: msg.created_at,
-              updated_at: msg.updated_at || msg.created_at
+          const transformedMessages = data.map(msg => {
+            const messageDate = chatType === 'dm' ? msg.created_at : msg.inserted_at
+            return {
+              ...msg,
+              id: msg.id,
+              channel_id: msg.channel_id,
+              user_id: msg.profile?.id || msg.user_id,
+              profile_id: msg.profile?.id || msg.profile_id,
+              content: msg.content,
+              message: msg.content,
+              created_at: messageDate,
+              inserted_at: chatType === 'dm' ? undefined : messageDate,
+              updated_at: msg.updated_at || messageDate,
+              user: msg.profile || {
+                id: msg.user_id,
+                username: 'Loading...',
+                full_name: 'Loading...',
+                avatar_url: null,
+                created_at: messageDate,
+                updated_at: msg.updated_at || messageDate
+              },
+              profile: msg.profile || {
+                id: msg.user_id,
+                username: 'Loading...',
+                full_name: 'Loading...',
+                avatar_url: null,
+                created_at: messageDate,
+                updated_at: msg.updated_at || messageDate
+              }
             }
-          })) as AnyMessage[]
+          }) as AnyMessage[]
 
           setMessages(transformedMessages)
           
@@ -467,7 +484,6 @@ export function useRealtimeMessages({ channelId, chatType = 'channel', searchQue
     // Check DM membership if this is a DM channel
     const hasMembership = await checkDmMembership()
     if (chatType === 'dm' && !hasMembership) {
-      console.log('User is not a member of this DM channel')
       return
     }
 
@@ -476,6 +492,8 @@ export function useRealtimeMessages({ channelId, chatType = 'channel', searchQue
 
     try {
       const table = chatType === 'dm' ? 'direct_messages' : 'messages'
+      
+      // Use inserted_at for channel, created_at for dm
       let query = supabase
         .from(table)
         .select(`
@@ -483,14 +501,14 @@ export function useRealtimeMessages({ channelId, chatType = 'channel', searchQue
           user:profiles(*)
         `)
         .eq('channel_id', channelId)
-        .order('created_at', { ascending: true })
+        .order(chatType === 'dm' ? 'created_at' : 'inserted_at', { ascending: true })
         .limit(50)
 
+      // For cursor-based pagination
       if (cursor) {
-        query = query.gt('created_at', cursor)
+        query = query.gt(chatType === 'dm' ? 'created_at' : 'inserted_at', cursor)
       }
 
-      // Add search filter if query is provided
       if (searchQuery?.trim()) {
         query = query.ilike('content', `%${searchQuery.trim()}%`)
       }
@@ -500,7 +518,7 @@ export function useRealtimeMessages({ channelId, chatType = 'channel', searchQue
       if (loadError) throw loadError
 
       if (data) {
-        // Queue loading of user data
+        // Queue missing users for loading
         const userIds = [...new Set(data.map(m => m.user_id))]
         queueUserLoad(userIds)
 
@@ -509,32 +527,30 @@ export function useRealtimeMessages({ channelId, chatType = 'channel', searchQue
           ...msg,
           content: msg.content,
           message: msg.content,
-          created_at: msg.created_at,
-          updated_at: msg.updated_at || msg.created_at
+          created_at: chatType === 'dm' ? msg.created_at : undefined,
+          inserted_at: chatType !== 'dm' ? msg.inserted_at : undefined,
+          updated_at: msg.updated_at || msg.created_at || msg.inserted_at
         })) as AnyMessage[]
 
         setMessages(prev => {
-          // Create a map of existing messages
           const messageMap = new Map(prev.map(m => [m.id, m]))
-          
-          // Add new messages to the map, overwriting any existing ones
           transformedMessages.forEach(msg => messageMap.set(msg.id, msg))
-          
-          // Convert map back to array and sort by created_at
           const updated = Array.from(messageMap.values())
+
           updated.sort((a, b) => {
-            const aTime = a.created_at
-            const bTime = b.created_at
-            return new Date(aTime).getTime() - new Date(bTime).getTime()
+            const getTime = (msg: AnyMessage) => {
+              const timestamp = chatType === 'dm' ? msg.created_at : ('inserted_at' in msg ? msg.inserted_at : msg.created_at)
+              return new Date(timestamp || new Date().toISOString()).getTime()
+            }
+            return getTime(a) - getTime(b)
           })
-          
+
           return updated
         })
 
         setHasMore(data.length === 50)
       }
     } catch (err) {
-      console.error('Error loading messages:', err)
       setError(err as Error)
     } finally {
       setIsLoading(false)
@@ -542,57 +558,44 @@ export function useRealtimeMessages({ channelId, chatType = 'channel', searchQue
   }, [user, channelId, chatType, searchQuery, checkDmMembership])
 
   const sendMessage = useCallback(async (content: string) => {
-    if (!user) throw new Error('No authenticated user')
+    console.log('=== Starting sendMessage ===', { chatType, channelId, content })
+    if (!user) throw new Error('No user found')
+    // Allow empty content since attachments might be present
+    const trimmedContent = content.trim()
 
     if (chatType === 'dm') {
-      console.log('Sending DM with:', { channelId, userId: user.id, content });
-      
-      // Check if we're a member of this specific channel
-      const { data: existingMember, error: memberCheckError } = await supabase
-        .from('direct_message_members')
-        .select('profile_id')
-        .eq('channel_id', channelId)  // Check for this specific channel
-        .eq('user_id', user.id)
+      console.log('Sending DM message...')
+      // Check DM membership first
+      const hasMembership = await checkDmMembership()
+      console.log('DM membership check:', { hasMembership })
+      if (!hasMembership) {
+        throw new Error('Not a member of this DM channel')
+      }
+
+      // Send DM
+      console.log('Inserting DM into database...')
+      const { data, error } = await supabase
+        .from('direct_messages')
+        .insert({
+          channel_id: channelId,
+          user_id: user.id,
+          profile_id: user.id,
+          content: trimmedContent || ' ' // Use space if empty to ensure valid content
+        })
+        .select('*')
         .single()
 
-      if (memberCheckError && memberCheckError.code !== 'PGRST116') { // PGRST116 is "not found"
-        console.error('Error checking member data:', memberCheckError)
-        throw memberCheckError
+      if (error) {
+        console.error('Error sending DM:', error)
+        throw error
       }
-
-      let memberData = existingMember
-      
-      if (!existingMember) {
-        // Get the user's profile ID - note that for DMs, user.id is the same as profile.id
-        memberData = { profile_id: user.id }
-      }
-
-      if (!memberData?.profile_id) {
-        throw new Error('No profile ID found for user')
-      }
-
-      console.log('Found member profile:', memberData);
-
-      // Use the database function for DMs to handle everything in one transaction
-      const { data, error: sendError } = await supabase
-        .rpc('send_direct_message', {
-          p_channel_id: channelId,
-          p_user_id: user.id,
-          p_profile_id: memberData.profile_id,
-          p_content: content
-        })
-
-      if (sendError) {
-        console.error('Error sending DM:', sendError)
-        throw sendError
-      }
-
-      console.log('DM sent successfully:', data);
+      console.log('DM sent successfully:', data)
       return data
     } else {
       // Regular channel message
+      console.log('Sending channel message...')
       // First get the user's profile ID for this channel
-      console.log('Checking channel membership for:', { channelId, userId: user.id });
+      console.log('Checking channel membership for:', { channelId, userId: user.id })
       
       const { data: memberData, error: memberError } = await supabase
         .from('channel_members')
@@ -607,27 +610,34 @@ export function useRealtimeMessages({ channelId, chatType = 'channel', searchQue
       }
 
       if (!memberData?.profile_id) {
+        console.error('No profile ID found:', memberData)
         throw new Error('No profile ID found for user in this channel')
       }
 
-      console.log('Found member profile:', memberData);
-      console.log('Attempting to send message with:', {
+      console.log('Found member profile:', memberData)
+      const now = new Date().toISOString()
+
+      // Send the message with profile_id and use content field
+      console.log('Inserting message into database...', {
         channel_id: channelId,
         user_id: user.id,
         profile_id: memberData.profile_id,
-        content: content
-      });
+        content: trimmedContent || ' ', // Use space if empty to ensure valid content
+        inserted_at: now,
+        updated_at: now
+      })
 
-      // Send the message with profile_id and use content field
       const { data, error } = await supabase
         .from('messages')
         .insert({
           channel_id: channelId,
           user_id: user.id,
           profile_id: memberData.profile_id,
-          content: content
+          content: trimmedContent || ' ', // Use space if empty to ensure valid content
+          inserted_at: now,
+          updated_at: now
         })
-        .select('*')
+        .select('*, profile:profiles(*)')
         .single()
 
       if (error) {
@@ -635,19 +645,17 @@ export function useRealtimeMessages({ channelId, chatType = 'channel', searchQue
         throw error
       }
 
-      console.log('Message sent successfully:', data);
+      console.log('Message sent successfully:', data)
       return data
     }
-  }, [user, channelId, chatType])
+  }, [user, channelId, chatType, checkDmMembership])
 
   const updateMessage = useCallback(async (messageId: string | number, content: string) => {
     const table = chatType === 'dm' ? 'direct_messages' : 'messages'
-    const contentField = chatType === 'dm' ? 'content' : 'message'
-    const updateData = { [contentField]: content }
     
     const { data, error: updateError } = await supabase
       .from(table)
-      .update(updateData)
+      .update({ content })
       .eq('id', messageId)
       .select(`
         *,
@@ -658,15 +666,15 @@ export function useRealtimeMessages({ channelId, chatType = 'channel', searchQue
     if (updateError) throw updateError
 
     // Transform the message to have consistent field names
-    if (chatType !== 'dm' && data) {
+    if (data) {
       return {
         ...data,
-        content: data.message,
-        created_at: data.inserted_at,
-        updated_at: data.inserted_at
+        content: data.content,
+        created_at: chatType === 'dm' ? data.created_at : data.inserted_at,
+        updated_at: data.updated_at || data.created_at || data.inserted_at
       } as AnyMessage;
     }
-    return data as AnyMessage;
+    return null;
   }, [chatType])
 
   return {
