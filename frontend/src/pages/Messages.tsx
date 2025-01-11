@@ -60,21 +60,27 @@ export default function Messages() {
     if (!username) return
     
     try {
-      const channelId = await createDirectMessage(username)
-      const user = getUser(username)
+      // First check if user exists
+      const { data: userProfile, error: userError } = await supabase
+        .from('profiles')
+        .select('id, username, full_name')
+        .eq('username', username)
+        .single()
 
-      if (!user) {
-        throw new Error('Could not find user')
+      if (userError || !userProfile) {
+        alert(`User "${username}" not found. Please check the username and try again.`)
+        return
       }
 
+      const channelId = await createDirectMessage(username)
       setCurrentChat({
         type: 'dm',
         id: channelId,
-        name: user.username || user.full_name || 'Unknown User'
+        name: userProfile.username || userProfile.full_name || 'Unknown User'
       })
     } catch (err) {
       console.error('Failed to create DM:', err)
-      alert(err instanceof Error ? err.message : 'Failed to create DM')
+      alert(err instanceof Error ? err.message : 'Failed to create direct message')
     }
   }
 
@@ -96,8 +102,8 @@ export default function Messages() {
     }
   }
 
-  const getOtherUser = (members: { user: User }[]) => {
-    if (!currentUser) return null
+  const getOtherUser = (members: { user: User }[] | undefined) => {
+    if (!currentUser || !members || !Array.isArray(members)) return null
     return members.find(m => m.user.id !== currentUser.id)?.user
   }
 
@@ -147,9 +153,11 @@ export default function Messages() {
 
   useEffect(() => {
     // Load DM usernames
-    if (!dmChannels) return;
+    if (!dmChannels || !(dmChannels instanceof Map)) return;
     
-    dmChannels.forEach(async (dm) => {
+    Array.from(dmChannels.values()).forEach(async (dm) => {
+      if (!dm || !dm.members) return;
+      
       const otherUser = await getOtherUser(dm.members)
       if (otherUser) {
         setDmUsernames(prev => ({
@@ -158,7 +166,7 @@ export default function Messages() {
         }))
       }
     })
-  }, [dmChannels])
+  }, [dmChannels, currentUser])
 
   return (
     <div className="flex h-full">
