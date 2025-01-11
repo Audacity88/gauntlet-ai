@@ -129,19 +129,19 @@ export function useRealtimeMessages({ channelId, chatType = 'channel', searchQue
       attachments: newMessage.attachments
     })
     
-    // If message has attachments, trigger a reload of the channel
-    if (newMessage.attachments) {
-      console.log('Message has attachments, reloading channel...')
-      loadMessages()
-      return
-    }
-    
     // Don't process messages we've already seen
     if (processedMessages.current.has(newMessage.id)) {
       console.log('Message already processed:', newMessage.id)
       return
     }
 
+    // If message has attachments, handle them inline instead of reloading
+    const attachments = newMessage.attachments 
+      ? (typeof newMessage.attachments === 'string' 
+          ? JSON.parse(newMessage.attachments) 
+          : newMessage.attachments)
+      : []
+    
     console.log('Processing message immediately:', newMessage)
 
     const messageUser = getUserById(newMessage.user_id)
@@ -159,20 +159,6 @@ export function useRealtimeMessages({ channelId, chatType = 'channel', searchQue
       const timestamp = chatType === 'dm' 
         ? newMessage.created_at || new Date().toISOString()
         : newMessage.inserted_at || new Date().toISOString()
-        
-      // Parse attachments if they exist
-      let attachments: MessageAttachment[] = []
-      if (newMessage.attachments) {
-        try {
-          attachments = typeof newMessage.attachments === 'string' 
-            ? JSON.parse(newMessage.attachments)
-            : Array.isArray(newMessage.attachments) 
-              ? newMessage.attachments 
-              : []
-        } catch (e) {
-          console.warn('Failed to parse attachments:', e)
-        }
-      }
 
       // Check if we already have a temporary version of this message
       const tempMessageId = `temp-${newMessage.id}`
@@ -243,10 +229,13 @@ export function useRealtimeMessages({ channelId, chatType = 'channel', searchQue
     processedMessages.current.add(newMessage.id)
   }, [chatType, getUserById, queueUserLoad])
 
-  // Update realtime subscription setup
+  // Update realtime subscription setup with better cleanup
   useEffect(() => {
     if (!channelId || !user) return
     console.log('=== Setting up realtime subscription ===', { channelId, chatType })
+    
+    // Clear processed messages when changing channels
+    processedMessages.current.clear()
     
     const table = chatType === 'dm' ? 'direct_messages' : 'messages'
     const channel = supabase
@@ -275,6 +264,7 @@ export function useRealtimeMessages({ channelId, chatType = 'channel', searchQue
 
     return () => {
       console.log('Cleaning up subscription for:', { channelId, chatType })
+      processedMessages.current.clear()
       supabase.removeChannel(channel)
     }
   }, [channelId, chatType, user, processMessage])

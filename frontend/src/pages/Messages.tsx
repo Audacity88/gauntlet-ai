@@ -271,6 +271,7 @@ export function Messages() {
               <MessageList 
                 channelId={currentChat.id}
                 chatType={currentChat.type}
+                key={`${currentChat.type}-${currentChat.id}`}
               />
             </div>
           </div>
