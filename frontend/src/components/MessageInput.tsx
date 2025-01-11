@@ -1,6 +1,5 @@
 import { FormEvent, useRef, useState } from 'react'
 import { Paperclip } from 'lucide-react'
-import { FileUpload } from './FileUpload'
 
 interface MessageInputProps {
   onSubmit: (content: string) => Promise<void>
@@ -40,17 +39,6 @@ export function MessageInput({
         </div>
       )}
       
-      {selectedFile && (
-        <div className="px-2">
-          <FileUpload
-            selectedFile={selectedFile}
-            onFileSelect={onFileSelect}
-            onRemove={() => onFileSelect(null)}
-            isUploading={isUploading}
-          />
-        </div>
-      )}
-      
       <div className="flex items-center gap-2">
         <input
           type="text"
@@ -59,15 +47,15 @@ export function MessageInput({
             setContent(e.target.value)
             if (error) setError(null)
           }}
-          placeholder="Type a message..."
-          className="flex-1 rounded-lg border border-gray-300 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 text-black"
-          disabled={isUploading}
+          placeholder={selectedFile ? "Can't add text with attachments" : "Type a message..."}
+          className="flex-1 rounded-lg border border-gray-300 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 text-black disabled:bg-gray-100 disabled:text-gray-500"
+          disabled={isUploading || !!selectedFile}
         />
         <div className="flex items-center gap-2">
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            className="p-2 bg-gray-50 text-gray-500 hover:bg-gray-800 hover:text-white rounded-full transition-colors"
+            className={`p-2 ${selectedFile ? 'bg-blue-500 text-white' : 'bg-gray-50 text-gray-500 hover:bg-gray-800 hover:text-white'} rounded-full transition-colors`}
             disabled={isUploading}
           >
             <Paperclip className="w-5 h-5" />
@@ -79,6 +67,7 @@ export function MessageInput({
                 const file = e.target.files?.[0]
                 if (file) {
                   onFileSelect(file)
+                  setContent('')
                   if (error) setError(null)
                 }
               }}

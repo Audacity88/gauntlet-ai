@@ -1,7 +1,6 @@
 import { memo, useEffect, useRef, useState } from 'react';
 import { useRealtimeMessages } from '../hooks/useRealtimeMessages';
 import { MessageBubble } from './MessageBubble';
-import { FileUpload } from './FileUpload';
 import { useFileUpload } from '../hooks/useFileUpload';
 import { useAuth } from '../hooks/useAuth';
 import { SearchBar } from './SearchBar';
@@ -29,7 +28,9 @@ const MessageListContent = memo(function MessageListContent({
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState<MessageError | null>(null);
   const [markReadError, setMarkReadError] = useState<MessageError | null>(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const { user } = useAuth();
+  const { uploadFile } = useFileUpload();
   
   const {
     messages,
@@ -56,30 +57,44 @@ const MessageListContent = memo(function MessageListContent({
 
   // Handle message sending
   const handleSendMessage = async (content: string) => {
-    if (!user || !content.trim()) return;
-    await sendMessage(content);
-  };
-
-  // Handle file upload
-  const handleFileUpload = (file: File | null) => {
-    if (!user || !file) return;
+    if (!user) return;
     
-    setIsUploading(true);
-    setUploadError(null);
     try {
-      const { uploadFile } = useFileUpload();
-      return uploadFile(file);
+      setIsUploading(true);
+      setUploadError(null);
+
+      // If there's a file, upload it and send as attachment
+      if (selectedFile) {
+        const uploadResult = await uploadFile(selectedFile);
+        const fileMetadata = {
+          filename: selectedFile.name,
+          contentType: selectedFile.type,
+          size: selectedFile.size
+        };
+        await sendMessage('', uploadResult.url, fileMetadata);
+        setSelectedFile(null); // Clear the selected file after upload
+      } 
+      // Otherwise send as text message
+      else if (content.trim()) {
+        await sendMessage(content);
+      }
     } catch (err) {
       setUploadError({
-        code: 'UPLOAD_FAILED',
-        message: err instanceof Error ? err.message : 'Failed to upload file',
+        code: 'SEND_FAILED',
+        message: err instanceof Error ? err.message : 'Failed to send message',
         retry: async () => {
-          await handleFileUpload(file);
+          await handleSendMessage(content);
         }
       });
     } finally {
       setIsUploading(false);
     }
+  };
+
+  // Handle file selection
+  const handleFileSelect = (file: File | null) => {
+    setSelectedFile(file);
+    setUploadError(null);
   };
 
   // Show error states
@@ -190,8 +205,8 @@ const MessageListContent = memo(function MessageListContent({
       <div className="p-4 border-t">
         <MessageInput
           onSubmit={handleSendMessage}
-          onFileSelect={handleFileUpload}
-          selectedFile={null}
+          onFileSelect={handleFileSelect}
+          selectedFile={selectedFile}
           isUploading={isUploading}
         />
         {uploadError && (

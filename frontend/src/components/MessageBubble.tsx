@@ -163,9 +163,9 @@ const MessageBubbleContent = memo(function MessageBubbleContent({
             </div>
           </div>
         ) : (
-          <div className={`mt-1 ${isCurrentUser ? 'flex flex-col items-end' : ''}`}>
-            <div className="group/message flex items-start gap-2">
-              {isCurrentUser && !isOptimistic && (
+          <div className={`mt-1 ${isCurrentUser && !message.attachments?.some(a => a.content_type?.startsWith('image/')) ? 'flex flex-col items-end' : ''}`}>
+            <div className={`group/message flex items-start gap-2 ${isCurrentUser && message.attachments?.some(a => a.content_type?.startsWith('image/')) ? 'flex-row-reverse' : ''}`}>
+              {isCurrentUser && !isOptimistic && content && !message.attachments?.some(a => a.content_type?.startsWith('image/')) && (
                 <div className="opacity-0 group-hover/message:opacity-100 transition-opacity self-center flex-shrink-0">
                   <button
                     onClick={handleEdit}
@@ -190,52 +190,110 @@ const MessageBubbleContent = memo(function MessageBubbleContent({
                   </button>
                 </div>
               )}
-              <div className={`inline-block max-w-[85%] px-4 py-2 rounded-lg ${
-                isCurrentUser 
-                  ? 'bg-indigo-600 text-left rounded-tr-none text-white' 
-                  : 'bg-gray-50 rounded-tl-none'
+              <div className={`max-w-[85%] ${
+                message.attachments?.some(a => a.content_type?.startsWith('image/')) && !content
+                  ? 'p-0 bg-transparent'
+                  : `px-4 py-2 rounded-lg ${
+                      isCurrentUser 
+                        ? 'bg-indigo-600 text-left rounded-tr-none text-white' 
+                        : 'bg-gray-50 rounded-tl-none'
+                    }`
               }`}>
-                <p className={`whitespace-pre-wrap break-words ${
-                  isCurrentUser ? 'text-white' : 'text-gray-900'
-                }`}>
-                  {content || ''}
-                </p>
+                {content && (
+                  <p className={`whitespace-pre-wrap break-words ${
+                    isCurrentUser ? 'text-white' : 'text-gray-900'
+                  }`}>
+                    {content}
+                  </p>
+                )}
                 {message.attachments && message.attachments.length > 0 && (
-                  <div className="mt-2 space-y-2">
-                    {message.attachments.map((attachment) => (
-                      <div
-                        key={attachment.id}
-                        className={`inline-flex items-center space-x-2 px-3 py-1 rounded-md ${
-                          isCurrentUser ? 'bg-indigo-500/50' : 'bg-white/50'
-                        }`}
-                      >
-                        <svg
-                          className={`w-4 h-4 ${isCurrentUser ? 'text-indigo-100' : 'text-gray-500'}`}
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                          aria-hidden="true"
+                  <div className={`${content ? 'mt-2' : ''} space-y-2`}>
+                    {message.attachments.map((attachment) => {
+                      const isImage = attachment.content_type?.startsWith('image/');
+                      return (
+                        <div
+                          key={attachment.id || attachment.url || attachment.file_path}
+                          className="flex flex-col space-y-2"
                         >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"
-                          />
-                        </svg>
-                        <a
-                          href={attachment.file_path}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className={`text-sm ${
-                            isCurrentUser ? 'text-indigo-100 hover:text-white' : 'text-indigo-600 hover:text-indigo-700'
-                          }`}
-                          aria-label={`Download ${attachment.filename || 'attachment'}`}
-                        >
-                          {attachment.filename || 'Attachment'}
-                        </a>
-                      </div>
-                    ))}
+                          {isImage && (
+                            <div className="space-y-2">
+                              <div className="max-w-sm overflow-hidden rounded-lg">
+                                <img
+                                  src={attachment.url || attachment.file_path}
+                                  alt={attachment.filename || 'Image attachment'}
+                                  className="w-full h-auto object-cover"
+                                  loading="lazy"
+                                />
+                              </div>
+                              <div
+                                className={`inline-flex items-center space-x-2 px-3 py-1 rounded-md ${
+                                  isCurrentUser ? 'bg-indigo-500/50 ml-auto' : 'bg-white/50'
+                                }`}
+                              >
+                                <svg
+                                  className={`w-4 h-4 ${isCurrentUser ? 'text-indigo-100' : 'text-gray-500'}`}
+                                  fill="none"
+                                  stroke="currentColor"
+                                  viewBox="0 0 24 24"
+                                  aria-hidden="true"
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"
+                                  />
+                                </svg>
+                                <a
+                                  href={attachment.url || attachment.file_path}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className={`text-sm ${
+                                    isCurrentUser ? 'text-indigo-100 hover:text-white' : 'text-indigo-600 hover:text-indigo-700'
+                                  }`}
+                                  aria-label={`Download ${attachment.filename || 'attachment'}`}
+                                >
+                                  {attachment.filename || 'Attachment'}
+                                </a>
+                              </div>
+                            </div>
+                          )}
+                          {!isImage && (
+                            <div
+                              className={`inline-flex items-center space-x-2 px-3 py-1 rounded-md ${
+                                isCurrentUser ? 'bg-indigo-500/50 ml-auto' : 'bg-white/50'
+                              }`}
+                            >
+                              <svg
+                                className={`w-4 h-4 ${isCurrentUser ? 'text-indigo-100' : 'text-gray-500'}`}
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                                aria-hidden="true"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"
+                                />
+                              </svg>
+                              <a
+                                href={attachment.url || attachment.file_path}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className={`text-sm ${
+                                  isCurrentUser ? 'text-indigo-100 hover:text-white' : 'text-indigo-600 hover:text-indigo-700'
+                                }`}
+                                aria-label={`Download ${attachment.filename || 'attachment'}`}
+                              >
+                                {attachment.filename || 'Attachment'}
+                              </a>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>

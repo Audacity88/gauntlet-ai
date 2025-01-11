@@ -222,7 +222,7 @@ export function useRealtimeMessages({
   }, [channelId, user?.id, chatType, membershipCache])
 
   // Send message
-  const sendMessage = useCallback(async (content: string) => {
+  const sendMessage = useCallback(async (content: string, attachmentUrl?: string, fileMetadata?: { filename: string, contentType: string, size: number }) => {
     if (!user) throw new Error('No user found')
     const trimmedContent = content.trim()
 
@@ -238,7 +238,14 @@ export function useRealtimeMessages({
           channel_id: channelId,
           user_id: user.id,
           profile_id: user.id,
-          content: trimmedContent || ' '
+          content: trimmedContent || ' ',
+          attachments: attachmentUrl ? [{
+            url: attachmentUrl,
+            file_path: attachmentUrl,
+            filename: fileMetadata?.filename || attachmentUrl.split('/').pop() || 'attachment',
+            content_type: fileMetadata?.contentType || 'application/octet-stream',
+            size: fileMetadata?.size || 0
+          }] : undefined
         })
         .select('*, user:profiles(*)')
         .single()
@@ -266,6 +273,13 @@ export function useRealtimeMessages({
           user_id: user.id,
           profile_id: memberData.profile_id,
           content: trimmedContent || ' ',
+          attachments: attachmentUrl ? [{
+            url: attachmentUrl,
+            file_path: attachmentUrl,
+            filename: fileMetadata?.filename || attachmentUrl.split('/').pop() || 'attachment',
+            content_type: fileMetadata?.contentType || 'application/octet-stream',
+            size: fileMetadata?.size || 0
+          }] : undefined,
           inserted_at: now,
           updated_at: now
         })
