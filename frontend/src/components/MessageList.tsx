@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useRef, useState, useCallback } from 'react';
 import { useRealtimeMessages } from '../hooks/useRealtimeMessages';
 import { MessageBubble } from './MessageBubble';
 import { useFileUpload } from '../hooks/useFileUpload';
@@ -50,10 +50,17 @@ const MessageListContent = memo(function MessageListContent({
     }
   };
 
-  // Scroll to bottom on new messages
+  // Scroll to bottom on new messages, but not when searching
   useEffect(() => {
-    scrollToBottom();
-  }, [messages.length]);
+    if (!searchQuery) {
+      scrollToBottom();
+    }
+  }, [messages.length, searchQuery]);
+
+  // Handle search
+  const handleSearch = useCallback((query: string) => {
+    setSearchQuery(query);
+  }, []);
 
   // Handle message sending
   const handleSendMessage = async (content: string) => {
@@ -150,7 +157,7 @@ const MessageListContent = memo(function MessageListContent({
     <div className="flex flex-col h-full">
       <div className="p-4 border-b">
         <SearchBar
-          onSearch={setSearchQuery}
+          onSearch={handleSearch}
           placeholder="Search messages..."
         />
       </div>
@@ -160,7 +167,7 @@ const MessageListContent = memo(function MessageListContent({
         className="flex-1 overflow-y-auto p-4 space-y-4"
       >
         {/* Load more messages indicator */}
-        {hasMore && (
+        {hasMore && !searchQuery && (
           <div className="flex justify-center mb-4">
             <button
               onClick={() => {
@@ -182,6 +189,13 @@ const MessageListContent = memo(function MessageListContent({
                 'Load More'
               )}
             </button>
+          </div>
+        )}
+
+        {/* No results message when searching */}
+        {searchQuery && messages.length === 0 && !isLoading && (
+          <div className="flex flex-col items-center justify-center py-8 text-gray-500">
+            <p>No messages found matching "{searchQuery}"</p>
           </div>
         )}
 

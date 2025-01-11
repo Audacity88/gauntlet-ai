@@ -159,7 +159,7 @@ export function useRealtimeMessages({
 
       try {
         const table = chatType === 'dm' ? 'direct_messages' : 'messages'
-        const { data, error: queryError } = await supabase
+        let query = supabase
           .from(table)
           .select(`
             *,
@@ -167,14 +167,25 @@ export function useRealtimeMessages({
           `)
           .eq('channel_id', channelId)
           .order('created_at', { ascending: true })
-          .limit(50)
+
+        // Add search filter if search query is provided
+        if (searchQuery?.trim()) {
+          query = query.ilike('content', `%${searchQuery.trim()}%`)
+        }
+
+        // Add limit only if no search query
+        if (!searchQuery) {
+          query = query.limit(50)
+        }
+
+        const { data, error: queryError } = await query
 
         if (queryError) throw queryError
 
         if (data && mounted) {
           const processed = messageProcessor.processMessages(data)
           setMessages(processed)
-          setHasMore(data.length === 50)
+          setHasMore(!searchQuery && data.length === 50)
         }
       } catch (err) {
         const error = err instanceof Error ? err : new Error('Failed to load messages')
@@ -194,7 +205,7 @@ export function useRealtimeMessages({
     return () => {
       mounted = false
     }
-  }, [channelId, chatType, user, messageProcessor, setMessages, setLoading, setStoreError])
+  }, [channelId, chatType, user, messageProcessor, setMessages, setLoading, setStoreError, searchQuery])
 
   // Check DM membership
   const checkDmMembership = useCallback(async () => {
