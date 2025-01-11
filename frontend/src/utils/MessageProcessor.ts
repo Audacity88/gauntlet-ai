@@ -46,8 +46,8 @@ export class MessageProcessor {
     const messageUser = getUserById(message.user_id);
     const defaultUser: User = {
       id: message.user_id,
-      username: 'Loading...',
-      full_name: 'Loading...',
+      username: messageUser === undefined ? 'Loading...' : 'Unknown User',
+      full_name: messageUser === undefined ? 'Loading...' : 'Unknown User',
       avatar_url: null,
       created_at: timestamp,
       updated_at: timestamp
@@ -61,8 +61,8 @@ export class MessageProcessor {
       profile_id: message.profile_id,
       content: 'content' in message ? message.content : message.message,
       message: 'message' in message ? message.message : message.content,
-      created_at: chatType === 'dm' ? message.created_at || timestamp : undefined,
-      inserted_at: chatType === 'channel' ? message.inserted_at || timestamp : undefined,
+      created_at: message.created_at || timestamp,
+      inserted_at: message.inserted_at || timestamp,
       updated_at: message.updated_at || timestamp,
       attachments,
       user: messageUser || defaultUser,

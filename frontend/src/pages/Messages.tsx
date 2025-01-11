@@ -102,11 +102,47 @@ export default function Messages() {
   }
 
   const handleChannelClick = async (channel: Channel) => {
-    setCurrentChat({
-      type: 'channel',
-      id: channel.id,
-      name: channel.slug
-    })
+    if (!currentUser) {
+      alert('Please sign in to view channels')
+      return
+    }
+
+    try {
+      // Check if user is already a member
+      const { data: existingMembership, error: membershipError } = await supabase
+        .from('channel_members')
+        .select('id')
+        .eq('channel_id', channel.id)
+        .eq('user_id', currentUser.id)
+        .single()
+
+      if (membershipError && !existingMembership) {
+        // User is not a member, try to join the channel
+        const { error: joinError } = await supabase
+          .from('channel_members')
+          .insert({
+            channel_id: channel.id,
+            user_id: currentUser.id,
+            profile_id: currentUser.id,
+            role: 'member'
+          })
+
+        if (joinError) {
+          console.error('Failed to join channel:', joinError)
+          alert('Failed to join channel')
+          return
+        }
+      }
+
+      setCurrentChat({
+        type: 'channel',
+        id: channel.id,
+        name: channel.slug
+      })
+    } catch (err) {
+      console.error('Error accessing channel:', err)
+      alert('Error accessing channel')
+    }
   }
 
   useEffect(() => {
@@ -236,7 +272,7 @@ export default function Messages() {
         {currentChat ? (
           <div className="h-full flex flex-col">
             <div className="bg-white border-b px-6 py-3">
-              <h1 className="text-lg font-semibold">
+              <h1 className="text-lg font-semibold text-black">
                 {currentChat.type === 'channel' ? '#' : ''} {currentChat.name}
               </h1>
             </div>

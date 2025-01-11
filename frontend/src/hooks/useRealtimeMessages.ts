@@ -6,6 +6,10 @@ import { useAuth } from '../hooks/useAuth'
 import { useMessageStore } from '../stores/messageStore'
 import { getMessageProcessor, MessageType, AnyMessage } from '../utils/MessageProcessor'
 
+// Create a persistent user cache outside the component
+const userCache = new Map<string, User>();
+const loadingUsers = new Set<string>();
+
 interface UseRealtimeMessagesProps {
   channelId: string
   chatType?: MessageType
@@ -60,11 +64,45 @@ export function useRealtimeMessages({
 
   // Create message processor
   const messageProcessor = useMemo(() => {
+    const getUserById = async (id: string) => {
+      if (userCache.has(id)) {
+        return userCache.get(id);
+      }
+      
+      if (loadingUsers.has(id)) {
+        return undefined;
+      }
+      
+      loadingUsers.add(id);
+      const { data } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', id)
+        .single();
+        
+      if (data) {
+        userCache.set(id, data);
+        // Force a re-render by updating any messages from this user
+        const userMessages = messages.filter(m => m.user_id === id);
+        userMessages.forEach(message => {
+          updateMessage(message.id, { ...message, user: data });
+        });
+      }
+      loadingUsers.delete(id);
+      return data;
+    };
+    
     return getMessageProcessor({
       chatType,
-      getUserById: (id: string) => messages.find(m => m.user.id === id)?.user
-    })
-  }, [chatType, messages])
+      getUserById: (id: string) => {
+        const cachedUser = userCache.get(id);
+        if (!cachedUser && !loadingUsers.has(id)) {
+          getUserById(id);
+        }
+        return cachedUser;
+      }
+    });
+  }, [chatType, updateMessage]);
 
   // Process and add new message
   const processMessage = useCallback((newMessage: Message | DirectMessage) => {

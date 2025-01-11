@@ -104,7 +104,13 @@ const MessageBubbleContent = memo(function MessageBubbleContent({
               {message.user.username}
             </span>
             <span className="text-sm text-gray-500">
-              {new Date(message.created_at).toLocaleTimeString()}
+              {new Date(message.created_at).toLocaleString(undefined, {
+                month: 'short',
+                day: 'numeric',
+                hour: 'numeric',
+                minute: '2-digit',
+                hour12: true
+              })}
             </span>
           </div>
           {isCurrentUser && !isOptimistic && (
