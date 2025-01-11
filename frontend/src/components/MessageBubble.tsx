@@ -31,7 +31,7 @@ const MessageBubbleContent = memo(function MessageBubbleContent({
 
   const handleEdit = () => {
     setIsEditing(true);
-    setEditContent(content);
+    setEditContent(content || '');
     setError(null);
   };
 
@@ -74,6 +74,8 @@ const MessageBubbleContent = memo(function MessageBubbleContent({
     <div
       className={`flex items-start space-x-3 group ${
         isOptimistic ? 'opacity-70' : ''
+      } ${
+        isCurrentUser ? 'flex-row-reverse space-x-reverse' : ''
       }`}
     >
       <div className="relative flex-shrink-0">
@@ -90,16 +92,17 @@ const MessageBubbleContent = memo(function MessageBubbleContent({
             </span>
           </div>
         )}
-        <UserPresence
-          userId={message.user_id}
-          size="small"
-          className="absolute -bottom-1 -right-1"
-        />
+        <div className={`absolute -bottom-1 ${isCurrentUser ? '-left-1' : '-right-1'}`}>
+          <UserPresence
+            userId={message.user_id}
+            size="sm"
+          />
+        </div>
       </div>
 
-      <div className="flex-1 min-w-0">
-        <div className="flex items-baseline justify-between">
-          <div className="flex items-center space-x-2">
+      <div className={`flex-1 min-w-0 ${isCurrentUser ? 'text-right' : ''}`}>
+        <div className={`flex items-baseline ${isCurrentUser ? 'justify-end' : 'justify-between'}`}>
+          <div className={`flex items-center space-x-2 ${isCurrentUser ? 'flex-row-reverse space-x-reverse' : ''}`}>
             <span className="font-medium text-gray-900">
               {message.user.username}
             </span>
@@ -113,18 +116,6 @@ const MessageBubbleContent = memo(function MessageBubbleContent({
               })}
             </span>
           </div>
-          {isCurrentUser && !isOptimistic && (
-            <div className="opacity-0 group-hover:opacity-100 transition-opacity">
-              <button
-                onClick={handleEdit}
-                disabled={isEditing || isUpdating}
-                className="text-sm text-gray-500 hover:text-gray-700"
-                aria-label="Edit message"
-              >
-                Edit
-              </button>
-            </div>
-          )}
         </div>
         
         {isEditing ? (
@@ -152,7 +143,7 @@ const MessageBubbleContent = memo(function MessageBubbleContent({
                 </button>
               </div>
             )}
-            <div className="flex space-x-2">
+            <div className={`flex space-x-2 ${isCurrentUser ? 'justify-end' : ''}`}>
               <button
                 onClick={handleUpdate}
                 disabled={isUpdating || editContent.trim() === content}
@@ -172,44 +163,83 @@ const MessageBubbleContent = memo(function MessageBubbleContent({
             </div>
           </div>
         ) : (
-          <div className="mt-1">
-            <p className="text-gray-900 whitespace-pre-wrap break-words">
-              {content}
-            </p>
-            {message.attachments?.length > 0 && (
-              <div className="mt-2 space-y-2">
-                {message.attachments.map((attachment) => (
-                  <div
-                    key={attachment.id}
-                    className="inline-flex items-center space-x-2 px-3 py-1 bg-gray-100 rounded-md"
+          <div className={`mt-1 ${isCurrentUser ? 'flex flex-col items-end' : ''}`}>
+            <div className="group/message flex items-start gap-2">
+              {isCurrentUser && !isOptimistic && (
+                <div className="opacity-0 group-hover/message:opacity-100 transition-opacity self-center flex-shrink-0">
+                  <button
+                    onClick={handleEdit}
+                    disabled={isEditing || isUpdating}
+                    className="p-1 text-gray-100 hover:text-gray-200 rounded-full hover:bg-gray-600"
+                    aria-label="Edit message"
                   >
                     <svg
-                      className="w-4 h-4 text-gray-500"
+                      className="w-3.5 h-3.5"
                       fill="none"
                       stroke="currentColor"
                       viewBox="0 0 24 24"
-                      aria-hidden="true"
+                      xmlns="http://www.w3.org/2000/svg"
                     >
                       <path
                         strokeLinecap="round"
                         strokeLinejoin="round"
                         strokeWidth={2}
-                        d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"
+                        d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
                       />
                     </svg>
-                    <a
-                      href={attachment.file_path}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-sm text-indigo-600 hover:text-indigo-700"
-                      aria-label={`Download ${attachment.file_name || 'attachment'}`}
-                    >
-                      {attachment.file_name || 'Attachment'}
-                    </a>
+                  </button>
+                </div>
+              )}
+              <div className={`inline-block max-w-[85%] px-4 py-2 rounded-lg ${
+                isCurrentUser 
+                  ? 'bg-indigo-600 text-left rounded-tr-none text-white' 
+                  : 'bg-gray-50 rounded-tl-none'
+              }`}>
+                <p className={`whitespace-pre-wrap break-words ${
+                  isCurrentUser ? 'text-white' : 'text-gray-900'
+                }`}>
+                  {content || ''}
+                </p>
+                {message.attachments && message.attachments.length > 0 && (
+                  <div className="mt-2 space-y-2">
+                    {message.attachments.map((attachment) => (
+                      <div
+                        key={attachment.id}
+                        className={`inline-flex items-center space-x-2 px-3 py-1 rounded-md ${
+                          isCurrentUser ? 'bg-indigo-500/50' : 'bg-white/50'
+                        }`}
+                      >
+                        <svg
+                          className={`w-4 h-4 ${isCurrentUser ? 'text-indigo-100' : 'text-gray-500'}`}
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                          aria-hidden="true"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"
+                          />
+                        </svg>
+                        <a
+                          href={attachment.file_path}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className={`text-sm ${
+                            isCurrentUser ? 'text-indigo-100 hover:text-white' : 'text-indigo-600 hover:text-indigo-700'
+                          }`}
+                          aria-label={`Download ${attachment.filename || 'attachment'}`}
+                        >
+                          {attachment.filename || 'Attachment'}
+                        </a>
+                      </div>
+                    ))}
                   </div>
-                ))}
+                )}
               </div>
-            )}
+            </div>
             {isOptimistic && (
               <div 
                 className="mt-1 text-sm text-gray-500"
