@@ -173,7 +173,7 @@ const MessageListContent = memo(function MessageListContent({
         {/* Message list */}
         {messages.map((message) => (
           <MessageBubble
-            key={message.id}
+            key={`${channelId}-${message.id}`}
             message={{
               ...message,
               profile: message.user,
@@ -232,7 +232,7 @@ export const MessageList = memo(function MessageListWrapper(props: MessageListPr
         </div>
       }
     >
-      <MessageListContent {...props} />
+      <MessageListContent key={`${props.channelId}-${props.chatType}`} {...props} />
     </ErrorBoundary>
   );
 }); 

@@ -36,8 +36,14 @@ export function useRealtimeMessages({
     removeMessage,
     setMessages,
     setLoading,
-    setError: setStoreError
+    setError: setStoreError,
+    clearMessages
   } = useMessageStore()
+
+  // Clear messages when changing channels
+  useEffect(() => {
+    clearMessages()
+  }, [channelId, chatType, clearMessages])
 
   // Memoize messages array from store
   const messages = useMemo(() => {
@@ -106,6 +112,8 @@ export function useRealtimeMessages({
   // Load initial messages
   useEffect(() => {
     if (!channelId || !user) return
+
+    let mounted = true
     
     const loadInitialMessages = async () => {
       setLoading(true)
@@ -125,21 +133,29 @@ export function useRealtimeMessages({
 
         if (queryError) throw queryError
 
-        if (data) {
+        if (data && mounted) {
           const processed = messageProcessor.processMessages(data)
           setMessages(processed)
           setHasMore(data.length === 50)
         }
       } catch (err) {
         const error = err instanceof Error ? err : new Error('Failed to load messages')
-        setError(error)
-        setStoreError(error)
+        if (mounted) {
+          setError(error)
+          setStoreError(error)
+        }
       } finally {
-        setLoading(false)
+        if (mounted) {
+          setLoading(false)
+        }
       }
     }
 
     loadInitialMessages()
+
+    return () => {
+      mounted = false
+    }
   }, [channelId, chatType, user, messageProcessor, setMessages, setLoading, setStoreError])
 
   // Check DM membership
