@@ -155,33 +155,19 @@ export default function Messages() {
     // Load DM usernames
     if (!dmChannels || !(dmChannels instanceof Map)) return;
     
-    // First set loading states for all DMs
-    const dms = Array.from(dmChannels.values())
-    const initialUsernames: Record<string, string> = {}
+    const dms = Array.from(dmChannels.values()).filter(dm => dm && dm.members);
+    
+    // Update usernames immediately from otherUser if available
     dms.forEach(dm => {
-      if (dm) {
-        initialUsernames[dm.id] = 'Loading...'
+      const otherUser = getOtherUser(dm.members);
+      if (otherUser) {
+        setDmUsernames(prev => ({
+          ...prev,
+          [dm.id]: otherUser.username || otherUser.full_name || 'Unknown User'
+        }));
       }
-    })
-    setDmUsernames(initialUsernames)
-
-    // Then load actual usernames
-    const loadUsernames = async () => {
-      for (const dm of dms) {
-        if (!dm || !dm.members) continue
-        
-        const otherUser = getOtherUser(dm.members)
-        if (otherUser) {
-          setDmUsernames(prev => ({
-            ...prev,
-            [dm.id]: otherUser.username || otherUser.full_name || 'Unknown User'
-          }))
-        }
-      }
-    }
-
-    loadUsernames()
-  }, [dmChannels, currentUser])
+    });
+  }, [dmChannels, currentUser, getOtherUser]);
 
   return (
     <div className="flex h-full">

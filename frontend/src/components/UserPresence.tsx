@@ -1,7 +1,8 @@
-import { memo } from 'react';
+import { memo, useEffect, useState } from 'react';
 import { usePresence } from '../hooks/usePresence';
 import { UserStatus } from '../utils/PresenceManager';
 import { formatDistanceToNow } from 'date-fns';
+import { useUserStore } from '../stores/userStore';
 
 interface UserPresenceProps {
   userId: string;
@@ -34,9 +35,21 @@ export const UserPresence = memo(function UserPresence({
   showLastSeen = false,
   size = 'md'
 }: UserPresenceProps) {
+  const { users } = useUserStore();
   const { getUserStatus, getLastSeen } = usePresence();
-  const status = getUserStatus(userId);
-  const lastSeen = getLastSeen(userId);
+  const [status, setStatus] = useState<UserStatus>(getUserStatus(userId));
+  const [lastSeenTime, setLastSeenTime] = useState<string | null>(getLastSeen(userId));
+
+  // Subscribe to user status changes
+  useEffect(() => {
+    const user = users.get(userId);
+    if (user?.status) {
+      setStatus(user.status as UserStatus);
+    }
+    if (user?.last_seen) {
+      setLastSeenTime(user.last_seen);
+    }
+  }, [userId, users]);
 
   const { bg, ring } = statusColors[status];
   const label = statusLabels[status];
@@ -54,9 +67,9 @@ export const UserPresence = memo(function UserPresence({
         aria-label={label}
       />
       
-      {showLastSeen && status === 'OFFLINE' && lastSeen && (
+      {showLastSeen && status === 'OFFLINE' && lastSeenTime && (
         <span className="text-xs text-gray-500">
-          Last seen {formatDistanceToNow(new Date(lastSeen), { addSuffix: true })}
+          Last seen {formatDistanceToNow(new Date(lastSeenTime), { addSuffix: true })}
         </span>
       )}
     </div>

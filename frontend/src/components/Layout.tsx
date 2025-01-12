@@ -24,7 +24,7 @@ export function Layout({ children }: LayoutProps) {
             <StatusManager />
             <button 
               onClick={signOut}
-              className="text-sm text-indigo-200 hover:text-white"
+              className="text-sm bg-indigo-700 text-indigo-200 hover:text-white"
             >
               Sign Out
             </button>

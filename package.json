@@ -22,7 +22,9 @@
     "socket.io-client": "^4.8.1"
   },
   "devDependencies": {
+    "@types/cookie": "^0.6.0",
     "@types/react": "^19.0.3",
+    "@types/uuid": "^10.0.0",
     "@typescript-eslint/eslint-plugin": "^6.21.0",
     "@typescript-eslint/parser": "^6.21.0",
     "@vitejs/plugin-react": "^4.2.0",
