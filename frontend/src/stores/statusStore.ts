@@ -1,34 +1,34 @@
 import { create } from 'zustand'
 import { UserStatus } from '../components/StatusManager'
 import { supabase } from '../lib/supabaseClient'
+import { User } from '../types/models'
 
 interface StatusState {
   userStatuses: Record<string, UserStatus>
+  userProfiles: Record<string, User>
   setUserStatus: (userId: string, status: UserStatus) => void
   getUserStatus: (userId: string) => UserStatus | undefined
+  getUserProfile: (userId: string) => User | undefined
   subscribeToUserStatus: (userId: string) => () => void
   subscribedUsers: Set<string>
 }
 
 export const useStatusStore = create<StatusState>((set, get) => ({
   userStatuses: {},
+  userProfiles: {},
   subscribedUsers: new Set(),
 
-  setUserStatus: (userId: string, status: UserStatus) => {
-    console.log('StatusStore - Setting status for user:', userId, 'to:', status)
+  setUserStatus: (userId: string, status: UserStatus) => 
     set((state) => ({
       userStatuses: {
         ...state.userStatuses,
         [userId]: status
       }
-    }))
-  },
+    })),
 
-  getUserStatus: (userId: string) => {
-    const status = get().userStatuses[userId]
-    console.log('StatusStore - Getting status for user:', userId, 'current value:', status)
-    return status
-  },
+  getUserStatus: (userId: string) => get().userStatuses[userId],
+
+  getUserProfile: (userId: string) => get().userProfiles[userId],
 
   subscribeToUserStatus: (userId: string) => {
     const state = get()
@@ -43,15 +43,25 @@ export const useStatusStore = create<StatusState>((set, get) => ({
       subscribedUsers: new Set([...state.subscribedUsers, userId])
     }))
 
-    // Initial status fetch
+    // Initial status and profile fetch
     supabase
       .from('profiles')
-      .select('status')
+      .select('*')
       .eq('id', userId)
       .single()
       .then(({ data }) => {
-        if (data?.status) {
-          state.setUserStatus(userId, data.status as UserStatus)
+        if (data) {
+          // Update both status and profile
+          set((state) => ({
+            userStatuses: {
+              ...state.userStatuses,
+              [userId]: data.status as UserStatus
+            },
+            userProfiles: {
+              ...state.userProfiles,
+              [userId]: data as User
+            }
+          }))
         }
       })
 
@@ -67,8 +77,18 @@ export const useStatusStore = create<StatusState>((set, get) => ({
           filter: `id=eq.${userId}`
         },
         (payload) => {
-          if (payload.new && 'status' in payload.new) {
-            state.setUserStatus(userId, payload.new.status as UserStatus)
+          if (payload.new) {
+            // Update both status and profile
+            set((state) => ({
+              userStatuses: {
+                ...state.userStatuses,
+                [userId]: payload.new.status as UserStatus
+              },
+              userProfiles: {
+                ...state.userProfiles,
+                [userId]: payload.new as User
+              }
+            }))
           }
         }
       )

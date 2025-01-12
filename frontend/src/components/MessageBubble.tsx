@@ -3,6 +3,7 @@ import { useAuth } from '../hooks/useAuth';
 import { MessageWithUser, DirectMessageWithUser } from '../types/schema';
 import { UserPresence } from './UserPresence';
 import { ErrorBoundary } from './ErrorBoundary';
+import { useStatusStore } from '../stores/statusStore';
 
 interface MessageError {
   code: string;
@@ -28,6 +29,11 @@ const MessageBubbleContent = memo(function MessageBubbleContent({
 
   const content = 'content' in message ? message.content : message.message;
   const isCurrentUser = currentUser?.id === message.user_id;
+  const getUserProfile = useStatusStore(state => state.getUserProfile)
+  const cachedUser = getUserProfile(message.user_id)
+  
+  // Use cached user profile if available, otherwise use message.user
+  const user = cachedUser || message.user
 
   const handleEdit = () => {
     setIsEditing(true);

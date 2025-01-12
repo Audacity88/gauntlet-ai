@@ -76,8 +76,6 @@ export function StatusManager() {
   const handleStatusChange = (newStatus: UserStatus) => {
     if (!currentUser) return
     
-    console.log('StatusManager - Changing status to:', newStatus)
-    
     // Update local state and store immediately
     setStatus(newStatus)
     setUserStatus(currentUser.id, newStatus)
@@ -87,23 +85,8 @@ export function StatusManager() {
   }
 
   useEffect(() => {
-    console.log('StatusManager - Initial status fetch for user:', currentUser?.id)
     if (currentUser) {
       getCurrentStatus()
-    }
-
-    const handleUnload = () => {
-      if (currentUser) {
-        handleStatusChange('OFFLINE')
-      }
-    }
-    window.addEventListener('beforeunload', handleUnload)
-
-    return () => {
-      window.removeEventListener('beforeunload', handleUnload)
-      if (currentUser) {
-        handleStatusChange('OFFLINE')
-      }
     }
   }, [currentUser, getCurrentStatus])
 

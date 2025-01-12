@@ -178,16 +178,22 @@ export class AuthManager {
 
   public async signOut(): Promise<void> {
     try {
-      this.updateState({ loading: true, error: null })
+      // Get current user before signing out
+      const { data: { user } } = await supabase.auth.getUser()
       
-      // Update status to offline in database
-      if (this.state.user) {
-        await supabase
+      if (user) {
+        // Set status to offline before signing out
+        const { error: updateError } = await supabase
           .from('profiles')
           .update({ status: 'OFFLINE' })
-          .eq('id', this.state.user.id)
+          .eq('id', user.id)
+
+        if (updateError) {
+          console.error('Error updating status:', updateError)
+        }
       }
-      
+
+      // Sign out
       const { error } = await supabase.auth.signOut()
       if (error) throw error
       await this.clearSession()
