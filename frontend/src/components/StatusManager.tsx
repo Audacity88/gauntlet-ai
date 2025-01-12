@@ -15,6 +15,7 @@ export function StatusManager() {
   const [loading, setLoading] = useState(true)
   const [updating, setUpdating] = useState(false)
   const [error, setError] = useState<Error | null>(null)
+  const [isInitialMount, setIsInitialMount] = useState(true)
 
   const getCurrentStatus = useCallback(async () => {
     if (!currentUser) return
@@ -25,18 +26,40 @@ export function StatusManager() {
 
       const { data, error: fetchError } = await supabase
         .from('profiles')
-        .select('status')
+        .select('status, username, full_name, avatar_url')
         .eq('id', currentUser.id)
         .single()
 
       if (fetchError) {
         throw fetchError
       }
-      
+
+      // Preserve existing status on page reload
       if (data?.status) {
         const newStatus = data.status as UserStatus
         setStatus(newStatus)
         setUserStatus(currentUser.id, newStatus)
+        
+        // Update user cache with full profile data
+        const userProfile = {
+          id: currentUser.id,
+          username: data.username,
+          full_name: data.full_name,
+          avatar_url: data.avatar_url,
+          status: newStatus,
+          created_at: currentUser.created_at,
+          updated_at: currentUser.updated_at
+        }
+        updateUserStatus(currentUser.id, newStatus)
+      } else {
+        // Set default status to ONLINE for new users
+        const newStatus = 'ONLINE'
+        setStatus(newStatus)
+        setUserStatus(currentUser.id, newStatus)
+        await supabase
+          .from('profiles')
+          .update({ status: newStatus })
+          .eq('id', currentUser.id)
       }
     } catch (err) {
       setError(err instanceof Error ? err : new Error('Failed to fetch status'))
@@ -44,7 +67,7 @@ export function StatusManager() {
     } finally {
       setLoading(false)
     }
-  }, [currentUser, setUserStatus])
+  }, [currentUser, setUserStatus, updateUserStatus])
 
   const debouncedUpdateStatus = useDebounce(async (newStatus: UserStatus) => {
     if (!currentUser) return
@@ -53,15 +76,7 @@ export function StatusManager() {
       setUpdating(true)
       setError(null)
       
-      // Update status in database
-      const { error: updateError } = await supabase
-        .from('profiles')
-        .update({ status: newStatus })
-        .eq('id', currentUser.id)
-
-      if (updateError) throw updateError
-      
-      // Update the user cache
+      // Update status in database and cache
       await updateUserStatus(currentUser.id, newStatus)
     } catch (err) {
       setError(err instanceof Error ? err : new Error('Failed to update status'))
@@ -84,8 +99,12 @@ export function StatusManager() {
     debouncedUpdateStatus(newStatus)
   }
 
+  // Handle initial sign-in
   useEffect(() => {
-    if (currentUser) {
+    if (currentUser && isInitialMount) {
+      setIsInitialMount(false)
+      handleStatusChange('ONLINE')
+    } else if (currentUser) {
       getCurrentStatus()
     }
   }, [currentUser, getCurrentStatus])
