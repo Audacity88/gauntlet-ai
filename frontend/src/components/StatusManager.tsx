@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useUserCache } from '../hooks/useUserCache'
 import { useAuth } from '../hooks/useAuth'
-import { UserStatus } from '../utils/PresenceManager'
+import { UserStatus, getPresenceManager, PresenceError } from '../utils/PresenceManager'
 import { supabase } from '../lib/supabaseClient'
 import { useDebounce } from '../hooks/useDebounce'
 
@@ -47,22 +47,18 @@ export function StatusManager() {
     try {
       setUpdating(true)
       setError(null)
-      const { error: updateError } = await supabase
-        .from('profiles')
-        .update({ 
-          status: newStatus,
-          last_seen: new Date().toISOString()
-        })
-        .eq('id', currentUser.id)
-
-      if (updateError) {
-        throw updateError
-      }
-
+      
+      // Get presence manager and ensure it's initialized
+      const presenceManager = getPresenceManager(currentUser.id)
+      await presenceManager.initialize()
+      
+      // Update presence
+      await presenceManager.updatePresence(newStatus)
+      
+      // Then update the user cache
       await updateUserStatus(currentUser.id, newStatus)
     } catch (err) {
       setError(err instanceof Error ? err : new Error('Failed to update status'))
-      console.error('Error updating status:', err)
       // Revert status on error
       setStatus(status)
     } finally {
@@ -77,7 +73,13 @@ export function StatusManager() {
 
   useEffect(() => {
     if (currentUser) {
-      getCurrentStatus()
+      // Initialize presence manager when component mounts
+      const presenceManager = getPresenceManager(currentUser.id)
+      presenceManager.initialize().then(() => {
+        getCurrentStatus()
+      }).catch((err: unknown) => {
+        setError(err instanceof Error ? err : new Error('Failed to initialize presence'))
+      })
     }
 
     const handleUnload = () => {
