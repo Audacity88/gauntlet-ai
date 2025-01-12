@@ -3,12 +3,14 @@ import { useUserCache } from '../hooks/useUserCache'
 import { useAuth } from '../hooks/useAuth'
 import { useDebounce } from '../hooks/useDebounce'
 import { supabase } from '../lib/supabaseClient'
+import { useStatusStore } from '../stores/statusStore'
 
 export type UserStatus = 'ONLINE' | 'AWAY' | 'BUSY' | 'OFFLINE'
 
 export function StatusManager() {
   const { user: currentUser } = useAuth()
   const { updateUserStatus } = useUserCache()
+  const setUserStatus = useStatusStore(state => state.setUserStatus)
   const [status, setStatus] = useState<UserStatus>('ONLINE')
   const [loading, setLoading] = useState(true)
   const [updating, setUpdating] = useState(false)
@@ -32,7 +34,9 @@ export function StatusManager() {
       }
       
       if (data?.status) {
-        setStatus(data.status as UserStatus)
+        const newStatus = data.status as UserStatus
+        setStatus(newStatus)
+        setUserStatus(currentUser.id, newStatus)
       }
     } catch (err) {
       setError(err instanceof Error ? err : new Error('Failed to fetch status'))
@@ -40,7 +44,7 @@ export function StatusManager() {
     } finally {
       setLoading(false)
     }
-  }, [currentUser])
+  }, [currentUser, setUserStatus])
 
   const debouncedUpdateStatus = useDebounce(async (newStatus: UserStatus) => {
     if (!currentUser) return
@@ -63,17 +67,27 @@ export function StatusManager() {
       setError(err instanceof Error ? err : new Error('Failed to update status'))
       // Revert status on error
       setStatus(status)
+      setUserStatus(currentUser.id, status)
     } finally {
       setUpdating(false)
     }
   }, 500)
 
   const handleStatusChange = (newStatus: UserStatus) => {
+    if (!currentUser) return
+    
+    console.log('StatusManager - Changing status to:', newStatus)
+    
+    // Update local state and store immediately
     setStatus(newStatus)
+    setUserStatus(currentUser.id, newStatus)
+    
+    // Debounce the database update
     debouncedUpdateStatus(newStatus)
   }
 
   useEffect(() => {
+    console.log('StatusManager - Initial status fetch for user:', currentUser?.id)
     if (currentUser) {
       getCurrentStatus()
     }
