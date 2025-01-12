@@ -1,20 +1,14 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
-import { useProfile } from '../hooks/useProfile'
 
-interface OnboardingProps {
-  onComplete: () => void;
-}
-
-export function Onboarding({ onComplete }: OnboardingProps) {
-  const { user } = useAuth()
-  const { updateProfile, error: profileError, loading: profileLoading } = useProfile()
+export function Onboarding() {
+  const navigate = useNavigate()
+  const { user, updateProfile } = useAuth()
   const [username, setUsername] = useState('')
   const [fullName, setFullName] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<Error | null>(null)
-  const navigate = useNavigate()
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -29,7 +23,6 @@ export function Onboarding({ onComplete }: OnboardingProps) {
         full_name: fullName
       })
 
-      onComplete()
       navigate('/chat')
     } catch (err) {
       setError(err instanceof Error ? err : new Error('Failed to complete onboarding'))
@@ -39,8 +32,8 @@ export function Onboarding({ onComplete }: OnboardingProps) {
     }
   }
 
-  const isSubmitting = loading || profileLoading
-  const displayError = error || profileError
+  const isSubmitting = loading
+  const displayError = error
 
   return (
     <div className="max-w-md mx-auto p-6">
@@ -102,5 +95,5 @@ export function Onboarding({ onComplete }: OnboardingProps) {
         </button>
       </form>
     </div>
-  )
+  );
 } 

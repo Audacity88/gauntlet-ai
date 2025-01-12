@@ -27,7 +27,8 @@
     "socket.io-client": "^4.7.2",
     "tsx": "^4.19.2",
     "uuid": "^11.0.5",
-    "zod": "^3.24.1"
+    "zod": "^3.24.1",
+    "zustand": "^5.0.3"
   },
   "devDependencies": {
     "@tailwindcss/forms": "^0.5.7",
@@ -38,6 +39,7 @@
     "@types/jest": "^29.5.14",
     "@types/react": "^18.2.37",
     "@types/react-dom": "^18.2.15",
+    "@types/react-dropzone": "^4.2.2",
     "@typescript-eslint/eslint-plugin": "^6.10.0",
     "@typescript-eslint/parser": "^6.10.0",
     "@vitejs/plugin-react": "^4.3.4",

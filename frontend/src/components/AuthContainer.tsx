@@ -1,12 +1,10 @@
 import { Auth } from '@supabase/auth-ui-react';
 import { ThemeSupa } from '@supabase/auth-ui-shared';
 import { supabase } from '../lib/supabaseClient';
-import { useCallback } from 'react';
+import { useAuth } from '../hooks/useAuth';
 
 export function AuthContainer() {
-  const handleAuthError = useCallback((error: Error) => {
-    console.error('Auth error:', error);
-  }, []);
+  const { signIn } = useAuth();
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
@@ -18,6 +16,7 @@ export function AuthContainer() {
         <div className="bg-white rounded-lg shadow-md p-6">
           <Auth
             supabaseClient={supabase}
+            view="sign_in"
             appearance={{
               theme: ThemeSupa,
               style: {
@@ -31,19 +30,11 @@ export function AuthContainer() {
                 default: {
                   colors: {
                     brand: '#4F46E5',
-                    brandAccent: '#4338CA',
-                    messageText: 'red',
-                    messageBackground: '#FEE2E2'
-                  },
-                },
-              },
+                    brandAccent: '#4338CA'
+                  }
+                }
+              }
             }}
-            providers={['github', 'google']}
-            redirectTo={window.location.origin}
-            magicLink={false}
-            view="sign_in"
-            showLinks={true}
-            onError={handleAuthError}
             localization={{
               variables: {
                 sign_in: {
@@ -51,21 +42,22 @@ export function AuthContainer() {
                   password_label: 'Password',
                   button_label: 'Sign in',
                   loading_button_label: 'Signing in...',
-                  link_text: "Don't have an account? Sign up",
-                  email_input_placeholder: 'Your email address',
-                  password_input_placeholder: 'Your password'
+                  link_text: "Don't have an account? Sign up"
                 },
                 sign_up: {
                   email_label: 'Email',
                   password_label: 'Password',
                   button_label: 'Sign up',
                   loading_button_label: 'Signing up...',
-                  link_text: 'Already have an account? Sign in',
-                  email_input_placeholder: 'Your email address',
-                  password_input_placeholder: 'Choose a password'
-                },
-              },
+                  link_text: 'Already have an account? Sign in'
+                }
+              }
             }}
+            providers={['github', 'google']}
+            redirectTo={window.location.origin}
+            onlyThirdPartyProviders={false}
+            magicLink={false}
+            showLinks={true}
           />
         </div>
       </div>

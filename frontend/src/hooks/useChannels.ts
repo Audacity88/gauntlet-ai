@@ -4,17 +4,19 @@ import { Channel, ChannelWithDetails, User } from '../types/models'
 import { getChannelProcessor } from '../utils/ChannelProcessor'
 import { useChannelStore } from '../stores/channelStore'
 import { useUserCache } from '../hooks/useUserCache'
+import { useAuth } from '../hooks/useAuth'
 
 export function useChannels() {
   const { 
     channels, 
-    isLoading,
+    loading,
     error,
     setChannels, 
     setLoading, 
     setError 
   } = useChannelStore()
   const { getUser } = useUserCache()
+  const { user } = useAuth()
   
   const channelProcessor = getChannelProcessor({
     getUserById: (id: string) => getUser(id)
@@ -29,7 +31,6 @@ export function useChannels() {
         setLoading(true)
         setError(null)
 
-        const { data: { user } } = await supabase.auth.getUser()
         if (!user || !mounted) {
           setLoading(false)
           return
@@ -53,7 +54,8 @@ export function useChannels() {
         
         // Only update channels if we have data and component is still mounted
         if (mounted && processedChannels.length > 0) {
-          setChannels(() => processedChannels.filter(Boolean))
+          const validChannels = processedChannels.filter(Boolean) as ChannelWithDetails[]
+          setChannels(validChannels)
         }
 
         // Subscribe to channel changes
@@ -72,18 +74,23 @@ export function useChannels() {
               try {
                 if (payload.eventType === 'INSERT') {
                   const processedChannel = await channelProcessor.processChannel(payload.new as Channel)
-                  setChannels(prev => [...Array.from(prev.values()), processedChannel])
+                  if (processedChannel) {
+                    const currentChannels = Array.from(channels.values())
+                    setChannels([...currentChannels, processedChannel])
+                  }
                 } else if (payload.eventType === 'UPDATE') {
                   const processedChannel = await channelProcessor.processChannel(payload.new as Channel)
-                  setChannels(prev => {
-                    const channels = Array.from(prev.values())
-                    const index = channels.findIndex(ch => ch.id === processedChannel.id)
-                    if (index === -1) return channels
-                    channels[index] = processedChannel
-                    return channels
-                  })
+                  if (processedChannel) {
+                    const currentChannels = Array.from(channels.values())
+                    const index = currentChannels.findIndex(ch => ch.id === processedChannel.id)
+                    if (index !== -1) {
+                      currentChannels[index] = processedChannel
+                      setChannels(currentChannels)
+                    }
+                  }
                 } else if (payload.eventType === 'DELETE') {
-                  setChannels(prev => Array.from(prev.values()).filter(ch => ch.id !== payload.old.id))
+                  const currentChannels = Array.from(channels.values())
+                  setChannels(currentChannels.filter(ch => ch.id !== payload.old.id))
                 }
               } catch (err) {
                 console.error('Error processing channel change:', err)
@@ -114,14 +121,13 @@ export function useChannels() {
     return () => {
       mounted = false;
     }
-  }, [])
+  }, [user])
 
   const loadChannels = async () => {
     try {
       setLoading(true)
       setError(null)
 
-      const { data: { user } } = await supabase.auth.getUser()
       if (!user) {
         setLoading(false)
         return
@@ -145,7 +151,8 @@ export function useChannels() {
       
       // Only update channels if we have data
       if (processedChannels.length > 0) {
-        setChannels(() => processedChannels.filter(Boolean))
+        const validChannels = processedChannels.filter(Boolean) as ChannelWithDetails[]
+        setChannels(validChannels)
       }
 
     } catch (err) {
@@ -162,7 +169,6 @@ export function useChannels() {
 
   const createChannel = async ({ slug }: CreateChannelParams) => {
     try {
-      const { data: { user } } = await supabase.auth.getUser()
       if (!user) throw new Error('No authenticated user')
 
       console.log('Creating channel with params:', { slug, created_by: user.id })
@@ -239,13 +245,15 @@ export function useChannels() {
       if (error) throw error
       
       if (data) {
-        setChannels(prev => 
-          prev.map(ch => 
-            ch.id === channelId 
-              ? data
-              : ch
-          )
-        )
+        const processedChannel = await channelProcessor.processChannel(data)
+        if (processedChannel) {
+          const currentChannels = Array.from(channels.values())
+          const index = currentChannels.findIndex(ch => ch.id === channelId)
+          if (index !== -1) {
+            currentChannels[index] = processedChannel
+            setChannels(currentChannels)
+          }
+        }
       }
       
       return data
@@ -265,7 +273,8 @@ export function useChannels() {
 
       if (error) throw error
 
-      setChannels(prev => prev.filter(ch => ch.id !== channelId))
+      const currentChannels = Array.from(channels.values())
+      setChannels(currentChannels.filter(ch => ch.id !== channelId))
 
     } catch (err) {
       console.error('Failed to delete channel:', err)
@@ -275,7 +284,6 @@ export function useChannels() {
 
   const deleteAllChannels = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser()
       if (!user) throw new Error('No authenticated user')
 
       const { error } = await supabase
@@ -285,7 +293,8 @@ export function useChannels() {
 
       if (error) throw error
       
-      setChannels(prev => prev.filter(ch => ch.created_by !== user.id))
+      const currentChannels = Array.from(channels.values())
+      setChannels(currentChannels.filter(ch => ch.created_by !== user.id))
 
     } catch (err) {
       console.error('Failed to delete all channels:', err)
@@ -295,7 +304,7 @@ export function useChannels() {
 
   return {
     channels,
-    isLoading,
+    loading,
     error,
     createChannel,
     updateChannel,

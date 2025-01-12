@@ -3,6 +3,7 @@ import Profile from './components/Profile';
 import About from './pages/About';
 import Messages from './pages/Messages';
 import Chat from './pages/Chat';
+import { AuthCallback } from './components/AuthCallback';
 
 export interface RouteConfig {
   path: string;
@@ -36,5 +37,10 @@ export const routes: RouteConfig[] = [
     path: '/chat/:channelId?',
     element: Chat,
     protected: true
+  },
+  {
+    path: '/auth/callback',
+    element: AuthCallback,
+    protected: false
   }
 ]; 

@@ -47,7 +47,7 @@ export interface User {
   username: string;
   full_name: string;
   avatar_url: string | null;
-  email?: string;
+  email?: string | undefined;
   is_online?: boolean;
   status?: UserStatus;
   last_seen?: string;
