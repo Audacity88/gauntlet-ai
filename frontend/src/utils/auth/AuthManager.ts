@@ -1,8 +1,7 @@
 import { supabase } from '../../lib/supabaseClient'
 import { AuthError } from '../errors'
 import { User } from '../../types/models'
-import { Session } from '@supabase/supabase-js'
-import { getPresenceManager } from '../PresenceManager'
+import { Session, Subscription } from '@supabase/supabase-js'
 
 interface AuthState {
   user: User | null
@@ -12,58 +11,47 @@ interface AuthState {
 }
 
 export class AuthManager {
-  private refreshTimeout?: NodeJS.Timeout
-  private listeners: Set<(state: AuthState) => void>
-  private state: AuthState
-  private authSubscription: { unsubscribe: () => void } | null = null
+  private state: AuthState = {
+    user: null,
+    loading: true,
+    initialized: false,
+    error: null
+  }
+
+  private listeners = new Set<(state: AuthState) => void>()
+  private refreshTimeout: NodeJS.Timeout | null = null
+  private authSubscription: Subscription | null = null
 
   constructor() {
-    this.listeners = new Set()
-    this.state = {
-      user: null,
-      loading: true,
-      initialized: false,
-      error: null
-    }
-
-    // Initialize auth state
     this.initialize()
   }
 
   private async initialize() {
     try {
-      // Get initial session
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession()
-      if (sessionError) throw sessionError
+      const { data: { session }, error } = await supabase.auth.getSession()
+      if (error) throw error
 
       if (session) {
         await this.handleSession(session)
+      } else {
+        this.updateState({
+          loading: false,
+          initialized: true
+        })
       }
 
-      // Set up auth state change listener
-      const { data: { subscription } } = supabase.auth.onAuthStateChange(
-        async (event, session) => {
-          if (session) {
-            await this.handleSession(session)
-          } else {
-            await this.clearSession()
-          }
+      // Subscribe to auth changes
+      const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+        if (session) {
+          await this.handleSession(session)
+        } else {
+          await this.clearSession()
         }
-      )
+      })
 
       this.authSubscription = subscription
-
-      // Update state
-      this.updateState({
-        loading: false,
-        initialized: true
-      })
     } catch (error) {
       this.handleError(error)
-      this.updateState({
-        loading: false,
-        initialized: true
-      })
     }
   }
 
@@ -85,11 +73,6 @@ export class AuthManager {
         status: 'ONLINE'
       }
 
-      // Initialize presence manager
-      const presenceManager = getPresenceManager(user.id)
-      await presenceManager.initialize()
-      await presenceManager.updatePresence('ONLINE')
-
       // Update state with user
       this.updateState({
         user,
@@ -109,17 +92,32 @@ export class AuthManager {
       clearTimeout(this.refreshTimeout)
     }
     
-    // Clean up presence if there was a user
-    if (this.state.user) {
-      const presenceManager = getPresenceManager(this.state.user.id)
-      await presenceManager.cleanup()
-    }
-    
     this.updateState({
       user: null,
       error: null,
       loading: false
     })
+  }
+
+  private handleError(error: unknown) {
+    const authError = error instanceof Error ? new AuthError(error.message) : new AuthError('Unknown error occurred')
+    this.updateState({
+      error: authError,
+      loading: false
+    })
+  }
+
+  private updateState(update: Partial<AuthState>) {
+    this.state = {
+      ...this.state,
+      ...update,
+      initialized: true
+    }
+    this.notifyListeners()
+  }
+
+  private notifyListeners() {
+    this.listeners.forEach(listener => listener(this.state))
   }
 
   private scheduleRefresh(expiresIn: number) {
@@ -129,62 +127,20 @@ export class AuthManager {
 
     // Refresh 5 minutes before expiry
     const refreshTime = (expiresIn - 300) * 1000
-    this.refreshTimeout = setTimeout(() => {
-      this.refreshSession()
+    this.refreshTimeout = setTimeout(async () => {
+      const { error } = await supabase.auth.refreshSession()
+      if (error) {
+        this.handleError(error)
+      }
     }, refreshTime)
   }
 
-  private async refreshSession() {
-    try {
-      const { data: { session }, error } = await supabase.auth.refreshSession()
-      if (error) throw error
-
-      if (session) {
-        await this.handleSession(session)
-      }
-    } catch (error) {
-      this.handleError(error)
-    }
-  }
-
-  private handleError(error: unknown) {
-    const authError = new AuthError(
-      error instanceof Error ? error.message : 'An unknown error occurred',
-      error instanceof Error ? error : undefined
-    )
-    this.updateState({ 
-      error: authError,
-      loading: false
-    })
-  }
-
-  private updateState(updates: Partial<AuthState>) {
-    this.state = { ...this.state, ...updates }
-    this.notifyListeners()
-  }
-
-  private notifyListeners() {
-    this.listeners.forEach(listener => listener(this.state))
-  }
-
-  // Public methods
-
-  /**
-   * Subscribe to auth state changes
-   */
   public subscribe(listener: (state: AuthState) => void) {
     this.listeners.add(listener)
-    // Immediately notify with current state
     listener(this.state)
-
-    return () => {
-      this.listeners.delete(listener)
-    }
+    return () => this.listeners.delete(listener)
   }
 
-  /**
-   * Sign in with email and password
-   */
   public async signInWithEmail(email: string, password: string): Promise<void> {
     try {
       this.updateState({ loading: true, error: null })
@@ -199,9 +155,6 @@ export class AuthManager {
     }
   }
 
-  /**
-   * Sign up with email and password
-   */
   public async signUpWithEmail(
     email: string, 
     password: string, 
@@ -223,18 +176,16 @@ export class AuthManager {
     }
   }
 
-  /**
-   * Sign out the current user
-   */
   public async signOut(): Promise<void> {
     try {
       this.updateState({ loading: true, error: null })
       
-      // Clean up presence before signing out
+      // Update status to offline in database
       if (this.state.user) {
-        const presenceManager = getPresenceManager(this.state.user.id)
-        await presenceManager.updatePresence('OFFLINE')
-        await presenceManager.cleanup()
+        await supabase
+          .from('profiles')
+          .update({ status: 'OFFLINE' })
+          .eq('id', this.state.user.id)
       }
       
       const { error } = await supabase.auth.signOut()
@@ -246,9 +197,6 @@ export class AuthManager {
     }
   }
 
-  /**
-   * Update user metadata
-   */
   public async updateUserMetadata(metadata: Partial<{ username: string; full_name: string; avatar_url: string }>) {
     try {
       this.updateState({ loading: true, error: null })
@@ -262,9 +210,6 @@ export class AuthManager {
     }
   }
 
-  /**
-   * Reset password
-   */
   public async resetPassword(email: string): Promise<void> {
     try {
       this.updateState({ loading: true, error: null })
@@ -276,16 +221,10 @@ export class AuthManager {
     }
   }
 
-  /**
-   * Get current auth state
-   */
   public getState(): AuthState {
     return this.state
   }
 
-  /**
-   * Clean up resources
-   */
   public async cleanup() {
     if (this.refreshTimeout) {
       clearTimeout(this.refreshTimeout)
@@ -294,11 +233,12 @@ export class AuthManager {
       this.authSubscription.unsubscribe()
     }
     
-    // Clean up presence if there was a user
+    // Update status to offline in database
     if (this.state.user) {
-      const presenceManager = getPresenceManager(this.state.user.id)
-      await presenceManager.updatePresence('OFFLINE')
-      await presenceManager.cleanup()
+      await supabase
+        .from('profiles')
+        .update({ status: 'OFFLINE' })
+        .eq('id', this.state.user.id)
     }
     
     this.listeners.clear()

@@ -1,10 +1,8 @@
 import { useEffect, useMemo, useState, useCallback } from 'react';
 import { useUserCache } from '../hooks/useUserCache';
-import { usePresence } from '../hooks/usePresence';
 import { UserPresence } from './UserPresence';
 import { User } from '../types/models';
 import { useAuth } from '../hooks/useAuth';
-import { UserStatus } from '../utils/PresenceManager';
 import { supabase } from '../lib/supabaseClient';
 
 interface UserListProps {
@@ -20,175 +18,188 @@ export function UserList({
   showPresence = true,
   filter = 'all'
 }: UserListProps) {
-  const { user: currentUser } = useAuth();
-  const { isLoading: isCacheLoading, error, setError, getUser, setUser } = useUserCache();
-  const { getUserStatus } = usePresence();
-  const [users, setUsers] = useState<User[]>([]);
-  const [isLoadingUsers, setIsLoadingUsers] = useState(false);
+  const [users, setUsers] = useState<User[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<Error | null>(null)
+  const { user: currentUser } = useAuth()
+  const { getUser } = useUserCache()
 
-  const fetchUsers = useCallback(async () => {
-    try {
-      setIsLoadingUsers(true);
-      setError(null);
-      
-      const { data, error: fetchError } = await supabase
-        .from('users')
-        .select('*');
-      
-      if (fetchError) throw fetchError;
-      
-      if (data) {
-        const validUsers = data.filter((user: User) => {
-          try {
-            const cachedUser = getUser(user.id);
-            if (!cachedUser) {
-              setUser(user.id, user);
-              return true;
-            }
-            return true;
-          } catch {
-            setUser(user.id, user);
-            return true;
-          }
-        });
-        setUsers(validUsers);
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err : new Error('Failed to fetch users'));
-    } finally {
-      setIsLoadingUsers(false);
-    }
-  }, [getUser, setUser, setError]);
-
+  // Load users
   useEffect(() => {
-    if (currentUser) {
-      fetchUsers();
-    }
-  }, [currentUser, fetchUsers]);
+    let mounted = true
 
-  const filteredUsers = useMemo(() => {
-    if (!users.length) return [];
-    
-    return users
-      .filter((user: User) => {
-        if (!currentUser || user.id === currentUser.id) return false;
-        
-        const status = getUserStatus(user.id);
-        if (filter === 'online') return status !== 'OFFLINE';
-        if (filter === 'offline') return status === 'OFFLINE';
-        return true;
-      })
-      .sort((a: User, b: User) => {
-        const statusA = getUserStatus(a.id);
-        const statusB = getUserStatus(b.id);
-        
-        if (statusA === statusB) {
-          return a.username.localeCompare(b.username);
+    const loadUsers = async () => {
+      try {
+        setLoading(true)
+        setError(null)
+
+        const { data, error: fetchError } = await supabase
+          .from('profiles')
+          .select('*')
+          .order('username')
+
+        if (fetchError) throw fetchError
+
+        if (mounted && data) {
+          setUsers(data)
         }
-        
-        return statusA === 'OFFLINE' ? 1 : -1;
-      });
-  }, [users, currentUser, filter, getUserStatus]);
+      } catch (err) {
+        if (mounted) {
+          setError(err instanceof Error ? err : new Error('Failed to load users'))
+          console.error('Error loading users:', err)
+        }
+      } finally {
+        if (mounted) {
+          setLoading(false)
+        }
+      }
+    }
 
-  const isLoading = isCacheLoading || isLoadingUsers;
+    loadUsers()
 
-  if (isLoading) {
+    // Subscribe to profile changes
+    const channel = supabase
+      .channel('public:profiles')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'profiles'
+        },
+        async (payload) => {
+          if (payload.new && 'id' in payload.new) {
+            const updatedUser = payload.new as User
+            setUsers(prevUsers => {
+              const userIndex = prevUsers.findIndex(u => u.id === updatedUser.id)
+              if (userIndex === -1) {
+                return [...prevUsers, updatedUser]
+              }
+              const newUsers = [...prevUsers]
+              newUsers[userIndex] = { ...newUsers[userIndex], ...updatedUser }
+              return newUsers
+            })
+          }
+        }
+      )
+      .subscribe()
+
+    return () => {
+      mounted = false
+      supabase.removeChannel(channel)
+    }
+  }, [])
+
+  // Filter and sort users
+  const filteredUsers = useMemo(() => {
+    return users
+      .filter(user => {
+        if (filter === 'all') return true
+        const userStatus = user.status || 'OFFLINE'
+        return filter === 'online' ? userStatus === 'ONLINE' : userStatus === 'OFFLINE'
+      })
+      .sort((a, b) => {
+        // Sort by status (online first) then by username
+        const statusA = a.status === 'ONLINE' ? 0 : 1
+        const statusB = b.status === 'ONLINE' ? 0 : 1
+        if (statusA !== statusB) return statusA - statusB
+        return a.username.localeCompare(b.username)
+      })
+  }, [users, filter])
+
+  const handleUserClick = useCallback((user: User) => {
+    if (onUserSelect && user.id !== currentUser?.id) {
+      onUserSelect(user)
+    }
+  }, [onUserSelect, currentUser])
+
+  if (loading) {
     return (
-      <div className="space-y-2" role="status" aria-label="Loading users">
+      <div className="space-y-2 animate-pulse">
         {[...Array(5)].map((_, i) => (
           <div
             key={i}
-            className="h-12 bg-gray-100 animate-pulse rounded-lg"
+            className="h-12 bg-gray-200 dark:bg-gray-700 rounded-md"
           />
         ))}
       </div>
-    );
+    )
   }
 
   if (error) {
     return (
-      <div 
-        className="p-4 text-sm text-red-500 bg-red-50 rounded-lg"
-        role="alert"
-        aria-live="polite"
-      >
-        <p className="font-medium">Failed to load users</p>
-        <p className="mt-1">{error.message}</p>
+      <div className="text-red-500 p-4 text-center">
+        <p>{error.message}</p>
         <button
-          onClick={fetchUsers}
-          className="mt-2 text-red-600 hover:text-red-700 font-medium"
-          aria-label="Retry loading users"
-          onKeyDown={(e) => e.key === 'Enter' && fetchUsers()}
+          onClick={() => window.location.reload()}
+          className="mt-2 text-sm text-red-600 hover:text-red-700"
         >
-          Try again
+          Retry
         </button>
       </div>
-    );
-  }
-
-  if (!users.length || filteredUsers.length === 0) {
-    return (
-      <div 
-        className="p-4 text-sm text-gray-500 bg-gray-50 rounded-lg"
-        role="status"
-      >
-        {filter !== 'all' 
-          ? `No ${filter} users found`
-          : 'No users found'}
-      </div>
-    );
+    )
   }
 
   return (
-    <div className="space-y-1" role="list">
-      {filteredUsers.map((user: User) => (
-        <button
+    <div className="space-y-1">
+      {filteredUsers.map(user => (
+        <div
           key={user.id}
-          onClick={() => onUserSelect?.(user)}
-          onKeyDown={(e) => e.key === 'Enter' && onUserSelect?.(user)}
-          className={`
-            w-full flex items-center gap-3 p-2 rounded-lg
-            transition-colors duration-200
-            ${activeUserId === user.id
-              ? 'bg-indigo-50 text-indigo-700'
-              : 'hover:bg-gray-50'
+          onClick={() => handleUserClick(user)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault()
+              handleUserClick(user)
             }
+          }}
+          className={`
+            flex items-center gap-3 p-2 rounded-md
+            ${user.id === activeUserId ? 'bg-indigo-100 dark:bg-indigo-900' : ''}
+            ${user.id !== currentUser?.id ? 'cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800' : ''}
+            transition-colors duration-200
           `}
-          aria-selected={activeUserId === user.id}
-          role="listitem"
+          role="button"
           tabIndex={0}
+          aria-selected={user.id === activeUserId}
+          aria-label={`Select ${user.username}`}
         >
           <div className="relative">
             {user.avatar_url ? (
               <img
                 src={user.avatar_url}
-                alt={`${user.username}'s avatar`}
-                className="w-8 h-8 rounded-full object-cover"
+                alt={user.username}
+                className="w-8 h-8 rounded-full"
               />
             ) : (
-              <div className="w-8 h-8 bg-indigo-100 text-indigo-700 rounded-full flex items-center justify-center">
-                {user.username.charAt(0).toUpperCase()}
+              <div className="w-8 h-8 bg-indigo-600 rounded-full flex items-center justify-center">
+                <span className="text-white text-sm">
+                  {user.username.charAt(0).toUpperCase()}
+                </span>
               </div>
             )}
             {showPresence && (
-              <div className="absolute -bottom-0.5 -right-0.5">
+              <div className="absolute -bottom-1 -right-1">
                 <UserPresence userId={user.id} size="sm" />
               </div>
             )}
           </div>
-
-          <div className="flex-1 min-w-0 text-left">
-            <div className="font-medium truncate">
-              {user.full_name || user.username}
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-medium truncate">
+                {user.username}
+                {user.id === currentUser?.id && (
+                  <span className="ml-2 text-xs text-gray-500">(You)</span>
+                )}
+              </p>
             </div>
             {user.full_name && (
-              <div className="text-sm text-gray-500 truncate">
-                @{user.username}
-              </div>
+              <p className="text-xs text-gray-500 truncate">
+                {user.full_name}
+              </p>
             )}
           </div>
-        </button>
+        </div>
       ))}
     </div>
-  );
+  )
 } 

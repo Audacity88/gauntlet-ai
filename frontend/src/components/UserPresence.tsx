@@ -1,8 +1,7 @@
-import { memo, useEffect, useState } from 'react';
-import { usePresence } from '../hooks/usePresence';
-import { UserStatus } from '../utils/PresenceManager';
-import { formatDistanceToNow } from 'date-fns';
-import { useUserStore } from '../stores/userStore';
+import { memo, useMemo } from 'react';
+import { useUserCache } from '../hooks/useUserCache';
+
+export type UserStatus = 'ONLINE' | 'AWAY' | 'BUSY' | 'OFFLINE';
 
 interface UserPresenceProps {
   userId: string;
@@ -35,41 +34,40 @@ export const UserPresence = memo(function UserPresence({
   showLastSeen = false,
   size = 'md'
 }: UserPresenceProps) {
-  const { users } = useUserStore();
-  const { getUserStatus, getLastSeen } = usePresence();
-  const [status, setStatus] = useState<UserStatus>(getUserStatus(userId));
-  const [lastSeenTime, setLastSeenTime] = useState<string | null>(getLastSeen(userId));
-
-  // Subscribe to user status changes
-  useEffect(() => {
-    const user = users.get(userId);
-    if (user?.status) {
-      setStatus(user.status as UserStatus);
-    }
-    if (user?.last_seen) {
-      setLastSeenTime(user.last_seen);
-    }
-  }, [userId, users]);
-
-  const { bg, ring } = statusColors[status];
-  const label = statusLabels[status];
-  const sizeClass = sizeClasses[size];
+  const { getUser } = useUserCache();
+  
+  const userInfo = useMemo(() => {
+    const user = getUser(userId);
+    const status = (user?.status || 'OFFLINE') as UserStatus;
+    const colors = statusColors[status];
+    const label = statusLabels[status];
+    const sizeClass = sizeClasses[size];
+    
+    return {
+      user,
+      status,
+      colors,
+      label,
+      sizeClass
+    };
+  }, [userId, getUser, size]);
 
   return (
     <div className="flex items-center gap-2">
-      <span
+      <div
         className={`
-          relative flex shrink-0 ${sizeClass}
-          ${bg} rounded-full ring-2 ${ring}
-          transition-colors duration-200
+          ${userInfo.sizeClass}
+          ${userInfo.colors.bg}
+          rounded-full ring-2 ring-offset-2
+          ${userInfo.colors.ring}
         `}
         role="status"
-        aria-label={label}
+        aria-label={userInfo.label}
+        title={userInfo.label}
       />
-      
-      {showLastSeen && status === 'OFFLINE' && lastSeenTime && (
+      {showLastSeen && userInfo.user?.last_seen && userInfo.status === 'OFFLINE' && (
         <span className="text-xs text-gray-500">
-          Last seen {formatDistanceToNow(new Date(lastSeenTime), { addSuffix: true })}
+          Last seen: {new Date(userInfo.user.last_seen).toLocaleString()}
         </span>
       )}
     </div>
