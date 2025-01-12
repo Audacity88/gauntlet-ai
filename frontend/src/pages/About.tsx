@@ -43,10 +43,10 @@ const About = memo(function About() {
         <p className="text-black">
           For support or inquiries, please contact us at{' '}
           <a 
-            href="mailto:support@gauntlet-ai.com"
+            href="mailto:dan.gilles@gauntletai.com"
             className="text-indigo-600 hover:text-indigo-700"
           >
-            support@gauntlet-ai.com
+            dan.gilles@gauntletai.com
           </a>
         </p>
       </section>

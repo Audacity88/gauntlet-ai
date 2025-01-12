@@ -82,7 +82,7 @@ export default function Profile() {
             type="text"
             value={formData.username}
             onChange={(e) => setFormData(prev => ({ ...prev, username: e.target.value }))}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500"
+            className="w-full px-3 py-2 border text-black border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500"
           />
         </div>
 
@@ -98,7 +98,7 @@ export default function Profile() {
             type="text"
             value={formData.full_name}
             onChange={(e) => setFormData(prev => ({ ...prev, full_name: e.target.value }))}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500"
+            className="w-full px-3 py-2 border text-black border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500"
           />
         </div>
 
@@ -125,7 +125,7 @@ export default function Profile() {
     <div className="p-4">
       <div className="flex justify-between items-start mb-4">
         <div>
-          <h2 className="text-xl font-bold">{profile.full_name}</h2>
+          <h2 className="text-xl font-bold text-black">{profile.full_name}</h2>
           <p className="text-gray-500">@{profile.username}</p>
         </div>
         <button
