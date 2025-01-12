@@ -80,14 +80,11 @@ export function useDirectMessages() {
       setError(null)
 
       if (!user) {
-        setConversationMessages('', [])
+        setConversationMessages(new Map())
         return
       }
 
-      const processor = messageProcessor()
-      if (!processor) return
-
-      // Get all DM channels with their members and member profiles
+      // Get all DM channels with their members
       const { data: channels, error: channelsError } = await supabase
         .from('direct_message_channels')
         .select(`
@@ -95,11 +92,13 @@ export function useDirectMessages() {
           created_at,
           updated_at,
           members:direct_message_members(
+            id,
             user_id,
+            profile_id,
+            last_read_at,
             username,
             full_name,
-            avatar_url,
-            last_read_at
+            avatar_url
           )
         `)
         .order('updated_at', { ascending: false })
@@ -119,7 +118,8 @@ export function useDirectMessages() {
           profile_id,
           content,
           created_at,
-          updated_at
+          updated_at,
+          attachments
         `)
         .order('created_at', { ascending: false })
 
@@ -131,18 +131,41 @@ export function useDirectMessages() {
       // Process and group messages by channel
       const channelMap = new Map()
       channels.forEach(channel => {
-        const otherMember = channel.members.find(m => m.user_id !== user.id)
+        const members = channel.members || []
+        const otherMember = members.find(m => m.user_id !== user.id)
         if (otherMember) {
           channelMap.set(channel.id, {
             id: channel.id,
+            members: members.map(m => ({ 
+              user: {
+                id: m.user_id,
+                username: m.username,
+                full_name: m.full_name,
+                avatar_url: m.avatar_url
+              },
+              last_read_at: m.last_read_at 
+            })),
             otherUser: {
               id: otherMember.user_id,
               username: otherMember.username,
               full_name: otherMember.full_name,
               avatar_url: otherMember.avatar_url
             },
-            messages: messages.filter(m => m.channel_id === channel.id),
-            last_read_at: otherMember.last_read_at,
+            messages: messages
+              .filter(m => m.channel_id === channel.id)
+              .map(m => {
+                const memberInfo = members.find(member => member.user_id === m.user_id)
+                return {
+                  ...m,
+                  user: memberInfo ? {
+                    id: memberInfo.user_id,
+                    username: memberInfo.username,
+                    full_name: memberInfo.full_name,
+                    avatar_url: memberInfo.avatar_url
+                  } : null
+                }
+              }),
+            last_read_at: members.find(m => m.user_id === user.id)?.last_read_at,
             created_at: channel.created_at,
             updated_at: channel.updated_at
           })
@@ -186,6 +209,9 @@ export function useDirectMessages() {
         console.error('RPC error:', rpcError)
         throw new Error('Failed to create or find DM channel')
       }
+
+      // Refresh channels to include the new one
+      await loadChannels()
 
       return channelId
     } catch (err) {

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useChannels } from '../hooks/useChannels'
 import { useDirectMessages } from '../hooks/useDirectMessages'
 import { MessageList } from '../components/MessageList'
@@ -6,6 +6,8 @@ import { Channel, User } from '../types/models'
 import { useAuth } from '../hooks/useAuth'
 import { useUserCache } from '../hooks/useUserCache'
 import { supabase } from '../lib/supabaseClient'
+import { useStatusStore } from '../stores/statusStore'
+import { UserPresence } from '../components/UserPresence'
 
 type ChatType = 'channel' | 'dm'
 
@@ -17,9 +19,9 @@ interface ChatTarget {
 
 export default function Messages() {
   const [currentChat, setCurrentChat] = useState<ChatTarget | null>(null)
-  const [dmUsernames, setDmUsernames] = useState<Record<string, string>>({})
   const { user: currentUser } = useAuth()
   const { getUser } = useUserCache()
+  const { getUserProfile } = useStatusStore()
   const { 
     channels, 
     isLoading: channelsLoading, 
@@ -34,6 +36,11 @@ export default function Messages() {
     createDirectMessage,
     refresh: refreshDirectMessages
   } = useDirectMessages()
+
+  const getOtherUser = useCallback((members: { user: User }[] | undefined) => {
+    if (!currentUser || !members || !Array.isArray(members)) return null
+    return members.find(m => m.user.id !== currentUser.id)?.user
+  }, [currentUser])
 
   const handleCreateChannel = async () => {
     if (!currentUser) {
@@ -102,11 +109,6 @@ export default function Messages() {
     }
   }
 
-  const getOtherUser = (members: { user: User }[] | undefined) => {
-    if (!currentUser || !members || !Array.isArray(members)) return null
-    return members.find(m => m.user.id !== currentUser.id)?.user
-  }
-
   const handleChannelClick = async (channel: Channel) => {
     if (!currentUser) {
       alert('Please sign in to view channels')
@@ -150,24 +152,6 @@ export default function Messages() {
       alert('Error accessing channel')
     }
   }
-
-  useEffect(() => {
-    // Load DM usernames
-    if (!dmChannels || !(dmChannels instanceof Map)) return;
-    
-    const dms = Array.from(dmChannels.values()).filter(dm => dm && dm.members);
-    
-    // Update usernames immediately from otherUser if available
-    dms.forEach(dm => {
-      const otherUser = getOtherUser(dm.members);
-      if (otherUser) {
-        setDmUsernames(prev => ({
-          ...prev,
-          [dm.id]: otherUser.username || otherUser.full_name || 'Unknown User'
-        }));
-      }
-    });
-  }, [dmChannels, currentUser, getOtherUser]);
 
   return (
     <div className="flex h-full">
@@ -241,36 +225,44 @@ export default function Messages() {
           ) : (
             <div className="space-y-2">
               {Array.from(dmChannels.values())
-                .filter(dm => dm && dm.id && dm.otherUser) // Filter out invalid DMs
-                .map(dm => (
-                  <button
-                    key={dm.id}
-                    onClick={() => setCurrentChat({
-                      type: 'dm',
-                      id: dm.id,
-                      name: dm.otherUser?.username || 'Loading...'
-                    })}
-                    className={`w-full text-left px-2 py-1 rounded text-black bg-indigo-50 hover:bg-indigo-100 ${
-                      currentChat?.id === dm.id
-                        ? 'bg-indigo-100'
-                        : ''
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="text-black">{dm.otherUser?.username || 'Loading...'}</span>
-                      {(dm.unread_count ?? 0) > 0 && (
-                        <span className="bg-indigo-500 text-white text-xs px-1.5 rounded-full">
-                          {dm.unread_count}
-                        </span>
-                      )}
-                    </div>
-                    {dm.messages?.[0] && (
-                      <div className="text-xs text-gray-600 truncate">
-                        {dm.messages[0].content}
+                .filter(dm => dm && dm.id && dm.members) // Filter out invalid DMs
+                .map(dm => {
+                  const otherUser = getOtherUser(dm.members)
+                  const displayName = otherUser?.username || 'Unknown User'
+                  
+                  return (
+                    <button
+                      key={dm.id}
+                      onClick={() => setCurrentChat({
+                        type: 'dm',
+                        id: dm.id,
+                        name: displayName
+                      })}
+                      className={`w-full text-left px-2 py-1 rounded text-black bg-indigo-50 hover:bg-indigo-100 ${
+                        currentChat?.id === dm.id
+                          ? 'bg-indigo-100'
+                          : ''
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-2">
+                          <span className="text-black">{displayName}</span>
+                          {otherUser && <UserPresence userId={otherUser.id} size="sm" />}
+                        </div>
+                        {(dm.unread_count ?? 0) > 0 && (
+                          <span className="bg-indigo-500 text-white text-xs px-1.5 rounded-full">
+                            {dm.unread_count}
+                          </span>
+                        )}
                       </div>
-                    )}
-                  </button>
-                ))}
+                      {dm.messages?.[0] && (
+                        <div className="text-xs text-gray-600 truncate">
+                          {dm.messages[0].content}
+                        </div>
+                      )}
+                    </button>
+                  )
+                })}
             </div>
           )}
         </div>
