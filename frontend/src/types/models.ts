@@ -19,13 +19,22 @@ export interface BaseMessage extends BaseEntity {
   user_id: UUID;
   content: string;
   attachments?: MessageAttachment[];
+
+  /**
+   * Optional parent_id for threads.
+   * If this message is a reply in a thread, parent_id references the top-level message in that thread.
+   */
+  parent_id?: string | null;
 }
 
 export const baseMessageSchema = baseEntitySchema.extend({
   channel_id: z.string().uuid(),
   user_id: z.string().uuid(),
   content: z.string().min(1, 'Message content cannot be empty'),
-  attachments: z.array(z.lazy(() => messageAttachmentSchema)).optional()
+  attachments: z.array(z.lazy(() => messageAttachmentSchema)).optional(),
+
+  // New optional parent_id field
+  parent_id: z.string().uuid().nullable().optional()
 });
 
 // Channel types and schemas
@@ -121,4 +130,4 @@ export const isChannel = (value: unknown): value is Channel => {
 
 export const isMessageAttachment = (value: unknown): value is MessageAttachment => {
   return messageAttachmentSchema.safeParse(value).success;
-}; 
+};

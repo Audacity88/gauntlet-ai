@@ -49,20 +49,4 @@ class DirectMessage(Base):
     # Relationships
     channel = relationship("DirectMessageChannel", back_populates="messages")
     user = relationship("User", back_populates="direct_messages")
-    profile = relationship("Profile", back_populates="direct_messages")
-    attachments = relationship("DirectMessageAttachment", back_populates="message", cascade="all, delete-orphan")
-
-class DirectMessageAttachment(Base):
-    __tablename__ = "direct_message_attachments"
-    __table_args__ = {"schema": "public"}
-
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
-    direct_message_id = Column(UUID(as_uuid=True), ForeignKey("public.direct_messages.id", ondelete="CASCADE"), nullable=False)
-    filename = Column(String, nullable=False)
-    file_path = Column(String, nullable=False)
-    file_size = Column(Integer, nullable=False)
-    content_type = Column(String, nullable=False)
-    inserted_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-
-    # Relationships
-    message = relationship("DirectMessage", back_populates="attachments") 
+    profile = relationship("Profile", back_populates="direct_messages") 

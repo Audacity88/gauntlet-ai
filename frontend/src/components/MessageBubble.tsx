@@ -4,6 +4,7 @@ import { MessageWithUser, DirectMessageWithUser } from '../types/schema';
 import { UserPresence } from './UserPresence';
 import { ErrorBoundary } from './ErrorBoundary';
 import { useStatusStore } from '../stores/statusStore';
+import { FileAttachment } from './FileAttachment';
 
 interface MessageError {
   code: string;
@@ -14,12 +15,18 @@ interface MessageBubbleProps {
   message: MessageWithUser | DirectMessageWithUser;
   onUpdate?: (messageId: string, content: string) => Promise<void>;
   isOptimistic?: boolean;
+
+  /**
+   * Optional callback for opening a thread
+   */
+  onOpenThread?: (message: MessageWithUser | DirectMessageWithUser) => void;
 }
 
 const MessageBubbleContent = memo(function MessageBubbleContent({
   message,
   onUpdate,
-  isOptimistic = false
+  isOptimistic = false,
+  onOpenThread
 }: MessageBubbleProps) {
   const { user: currentUser } = useAuth();
   const [isEditing, setIsEditing] = useState(false);
@@ -29,11 +36,16 @@ const MessageBubbleContent = memo(function MessageBubbleContent({
 
   const content = 'content' in message ? message.content : message.message;
   const isCurrentUser = currentUser?.id === message.user_id;
-  const getUserProfile = useStatusStore(state => state.getUserProfile)
-  const cachedUser = getUserProfile(message.user_id)
-  
+  const getUserProfile = useStatusStore((state) => state.getUserProfile);
+  const cachedUser = getUserProfile(message.user_id);
+
   // Use cached user profile if available, otherwise use message.user
-  const user = cachedUser || message.user
+  const user = cachedUser || message.user || {
+    id: message.user_id,
+    username: 'Unknown User',
+    full_name: 'Unknown User',
+    avatar_url: null
+  };
 
   const handleEdit = () => {
     setIsEditing(true);
@@ -59,7 +71,8 @@ const MessageBubbleContent = memo(function MessageBubbleContent({
       await onUpdate(message.id, editContent.trim());
       setIsEditing(false);
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to update message';
+      const errorMessage =
+        err instanceof Error ? err.message : 'Failed to update message';
       setError({
         code: 'UPDATE_FAILED',
         message: errorMessage
@@ -85,33 +98,40 @@ const MessageBubbleContent = memo(function MessageBubbleContent({
       }`}
     >
       <div className="relative flex-shrink-0">
-        {message.user.avatar_url ? (
+        {user.avatar_url ? (
           <img
-            src={message.user.avatar_url}
-            alt={message.user.username}
+            src={user.avatar_url}
+            alt={user.username}
             className="w-10 h-10 rounded-full"
           />
         ) : (
           <div className="w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center">
             <span className="text-indigo-700 font-medium">
-              {message.user.username.charAt(0).toUpperCase()}
+              {user.username.charAt(0).toUpperCase()}
             </span>
           </div>
         )}
-        <div className={`absolute -bottom-1 ${isCurrentUser ? '-left-1' : '-right-1'}`}>
-          <UserPresence
-            userId={message.user_id}
-            size="sm"
-          />
+        <div
+          className={`absolute -bottom-1 ${
+            isCurrentUser ? '-left-1' : '-right-1'
+          }`}
+        >
+          <UserPresence userId={message.user_id} size="sm" />
         </div>
       </div>
 
       <div className={`flex-1 min-w-0 ${isCurrentUser ? 'text-right' : ''}`}>
-        <div className={`flex items-baseline ${isCurrentUser ? 'justify-end' : 'justify-between'}`}>
-          <div className={`flex items-center space-x-2 ${isCurrentUser ? 'flex-row-reverse space-x-reverse' : ''}`}>
-            <span className="font-medium text-gray-900">
-              {message.user.username}
-            </span>
+        <div
+          className={`flex items-baseline ${
+            isCurrentUser ? 'justify-end' : 'justify-between'
+          }`}
+        >
+          <div
+            className={`flex items-center space-x-2 ${
+              isCurrentUser ? 'flex-row-reverse space-x-reverse' : ''
+            }`}
+          >
+            <span className="font-medium text-gray-900">{user.username}</span>
             <span className="text-sm text-gray-500">
               {new Date(message.created_at).toLocaleString(undefined, {
                 month: 'short',
@@ -123,7 +143,7 @@ const MessageBubbleContent = memo(function MessageBubbleContent({
             </span>
           </div>
         </div>
-        
+
         {isEditing ? (
           <div className="mt-1 space-y-2">
             <textarea
@@ -135,7 +155,7 @@ const MessageBubbleContent = memo(function MessageBubbleContent({
               aria-label="Edit message content"
             />
             {error && (
-              <div 
+              <div
                 className="text-sm text-red-500 flex items-center justify-between"
                 role="alert"
               >
@@ -149,7 +169,11 @@ const MessageBubbleContent = memo(function MessageBubbleContent({
                 </button>
               </div>
             )}
-            <div className={`flex space-x-2 ${isCurrentUser ? 'justify-end' : ''}`}>
+            <div
+              className={`flex space-x-2 ${
+                isCurrentUser ? 'justify-end' : ''
+              }`}
+            >
               <button
                 onClick={handleUpdate}
                 disabled={isUpdating || editContent.trim() === content}
@@ -169,149 +193,116 @@ const MessageBubbleContent = memo(function MessageBubbleContent({
             </div>
           </div>
         ) : (
-          <div className={`mt-1 ${isCurrentUser && !message.attachments?.some(a => a.content_type?.startsWith('image/')) ? 'flex flex-col items-end' : ''}`}>
-            <div className={`group/message flex items-start gap-2 ${isCurrentUser && message.attachments?.some(a => a.content_type?.startsWith('image/')) ? 'flex-row-reverse' : ''}`}>
-              {isCurrentUser && !isOptimistic && content && !message.attachments?.some(a => a.content_type?.startsWith('image/')) && (
-                <div className="opacity-0 group-hover/message:opacity-100 transition-opacity self-center flex-shrink-0">
-                  <button
-                    onClick={handleEdit}
-                    disabled={isEditing || isUpdating}
-                    className="p-1 text-gray-100 hover:text-gray-200 rounded-full hover:bg-gray-600"
-                    aria-label="Edit message"
-                  >
-                    <svg
-                      className="w-3.5 h-3.5"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                      xmlns="http://www.w3.org/2000/svg"
+          <div
+            className={`mt-1 ${
+              isCurrentUser &&
+              !message.attachments?.some((a) => a.content_type?.startsWith('image/'))
+                ? 'flex flex-col items-end'
+                : ''
+            }`}
+          >
+            <div
+              className={`group/message flex items-start gap-2 ${
+                isCurrentUser &&
+                message.attachments?.some((a) => a.content_type?.startsWith('image/'))
+                  ? 'flex-row-reverse'
+                  : ''
+              }`}
+            >
+              {/* Edit button for your own message */}
+              {isCurrentUser &&
+                !isOptimistic &&
+                content &&
+                !message.attachments?.some((a) => a.content_type?.startsWith('image/')) && (
+                  <div className="opacity-0 group-hover/message:opacity-100 transition-opacity self-center flex-shrink-0">
+                    <button
+                      onClick={handleEdit}
+                      disabled={isEditing || isUpdating}
+                      className="p-1 text-gray-100 hover:text-gray-200 rounded-full hover:bg-gray-600"
+                      aria-label="Edit message"
                     >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
-                      />
-                    </svg>
-                  </button>
-                </div>
-              )}
-              <div className={`max-w-[85%] ${
-                message.attachments?.some(a => a.content_type?.startsWith('image/')) && !content
-                  ? 'p-0 bg-transparent'
-                  : `px-4 py-2 rounded-lg ${
-                      isCurrentUser 
-                        ? 'bg-indigo-600 text-left rounded-tr-none text-white' 
-                        : 'bg-gray-50 rounded-tl-none'
-                    }`
-              }`}>
+                      <svg
+                        className="w-3.5 h-3.5"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                        xmlns="http://www.w3.org/2000/svg"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
+                        />
+                      </svg>
+                    </button>
+                  </div>
+                )}
+              <div
+                className={`max-w-[85%] ${
+                  message.attachments?.some((a) =>
+                    a.content_type?.startsWith('image/')
+                  ) && !content
+                    ? 'p-0 bg-transparent'
+                    : `px-4 py-2 rounded-lg ${
+                        isCurrentUser
+                          ? 'bg-indigo-600 text-left rounded-tr-none text-white'
+                          : 'bg-gray-50 rounded-tl-none'
+                      }`
+                }`}
+              >
                 {content && (
-                  <p className={`whitespace-pre-wrap break-words ${
-                    isCurrentUser ? 'text-white' : 'text-gray-900'
-                  }`}>
+                  <p
+                    className={`whitespace-pre-wrap break-words ${
+                      isCurrentUser ? 'text-white' : 'text-gray-900'
+                    }`}
+                  >
                     {content}
                   </p>
                 )}
+                {/* Attachments */}
                 {message.attachments && message.attachments.length > 0 && (
                   <div className={`${content ? 'mt-2' : ''} space-y-2`}>
-                    {message.attachments.map((attachment) => {
-                      const isImage = attachment.content_type?.startsWith('image/');
-                      return (
-                        <div
-                          key={attachment.id || attachment.url || attachment.file_path}
-                          className="flex flex-col space-y-2"
-                        >
-                          {isImage && (
-                            <div className="space-y-2">
-                              <div className="max-w-sm overflow-hidden rounded-lg">
-                                <img
-                                  src={attachment.url || attachment.file_path}
-                                  alt={attachment.filename || 'Image attachment'}
-                                  className="w-full h-auto object-cover"
-                                  loading="lazy"
-                                />
-                              </div>
-                              <div
-                                className={`inline-flex items-center space-x-2 px-3 py-1 rounded-md ${
-                                  isCurrentUser ? 'bg-indigo-500/50 ml-auto' : 'bg-white/50'
-                                }`}
-                              >
-                                <svg
-                                  className={`w-4 h-4 ${isCurrentUser ? 'text-indigo-100' : 'text-gray-500'}`}
-                                  fill="none"
-                                  stroke="currentColor"
-                                  viewBox="0 0 24 24"
-                                  aria-hidden="true"
-                                >
-                                  <path
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    strokeWidth={2}
-                                    d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"
-                                  />
-                                </svg>
-                                <a
-                                  href={attachment.url || attachment.file_path}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className={`text-sm ${
-                                    isCurrentUser ? 'text-indigo-100 hover:text-white' : 'text-indigo-600 hover:text-indigo-700'
-                                  }`}
-                                  aria-label={`Download ${attachment.filename || 'attachment'}`}
-                                >
-                                  {attachment.filename || 'Attachment'}
-                                </a>
-                              </div>
-                            </div>
-                          )}
-                          {!isImage && (
-                            <div
-                              className={`inline-flex items-center space-x-2 px-3 py-1 rounded-md ${
-                                isCurrentUser ? 'bg-indigo-500/50 ml-auto' : 'bg-white/50'
-                              }`}
-                            >
-                              <svg
-                                className={`w-4 h-4 ${isCurrentUser ? 'text-indigo-100' : 'text-gray-500'}`}
-                                fill="none"
-                                stroke="currentColor"
-                                viewBox="0 0 24 24"
-                                aria-hidden="true"
-                              >
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  strokeWidth={2}
-                                  d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"
-                                />
-                              </svg>
-                              <a
-                                href={attachment.url || attachment.file_path}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className={`text-sm ${
-                                  isCurrentUser ? 'text-indigo-100 hover:text-white' : 'text-indigo-600 hover:text-indigo-700'
-                                }`}
-                                aria-label={`Download ${attachment.filename || 'attachment'}`}
-                              >
-                                {attachment.filename || 'Attachment'}
-                              </a>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
+                    {message.attachments.map((attachment) => (
+                      <div
+                        key={attachment.id || attachment.url || attachment.file_path}
+                        className={`${isCurrentUser ? 'ml-auto' : ''}`}
+                      >
+                        <FileAttachment
+                          filename={attachment.filename || 'Attachment'}
+                          fileSize={attachment.size}
+                          contentType={attachment.content_type || 'application/octet-stream'}
+                          url={attachment.url}
+                          filePath={attachment.file_path}
+                          isOwner={isCurrentUser}
+                          onDelete={isCurrentUser ? () => {
+                            // TODO: Implement file deletion
+                            console.log('Delete file:', attachment.id);
+                          } : undefined}
+                        />
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>
             </div>
             {isOptimistic && (
-              <div 
-                className="mt-1 text-sm text-gray-500"
-                aria-live="polite"
-              >
+              <div className="mt-1 text-sm text-gray-500" aria-live="polite">
                 Sending...
               </div>
             )}
+          </div>
+        )}
+
+        {/* "Reply in thread" button, shown only if onOpenThread is provided and this is not already a reply */}
+        {!message.parent_id && onOpenThread && (
+          <div className={`mt-1 ${isCurrentUser ? 'text-right' : 'text-left'}`}>
+            <button
+              onClick={() => onOpenThread(message)}
+              className="text-xs text-blue-600 hover:underline"
+            >
+              Reply in thread
+            </button>
           </div>
         )}
       </div>
@@ -319,7 +310,9 @@ const MessageBubbleContent = memo(function MessageBubbleContent({
   );
 });
 
-export const MessageBubble = memo(function MessageBubbleWrapper(props: MessageBubbleProps) {
+export const MessageBubble = memo(function MessageBubbleWrapper(
+  props: MessageBubbleProps
+) {
   return (
     <ErrorBoundary
       fallback={
@@ -331,4 +324,4 @@ export const MessageBubble = memo(function MessageBubbleWrapper(props: MessageBu
       <MessageBubbleContent {...props} />
     </ErrorBoundary>
   );
-}); 
+});

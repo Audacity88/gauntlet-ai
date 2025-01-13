@@ -12,7 +12,7 @@ export function StatusManager() {
   const { updateUserStatus } = useUserCache()
   const setUserStatus = useStatusStore(state => state.setUserStatus)
   const [status, setStatus] = useState<UserStatus>('ONLINE')
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
   const [updating, setUpdating] = useState(false)
   const [error, setError] = useState<Error | null>(null)
   const [isInitialMount, setIsInitialMount] = useState(true)
@@ -34,8 +34,9 @@ export function StatusManager() {
         throw fetchError
       }
 
-      // Preserve existing status on page reload
-      if (data?.status) {
+      // Set status to ONLINE only on initial mount (sign in)
+      // Otherwise preserve existing status on page reload
+      if (data?.status && !isInitialMount) {
         const newStatus = data.status as UserStatus
         setStatus(newStatus)
         setUserStatus(currentUser.id, newStatus)
@@ -52,31 +53,47 @@ export function StatusManager() {
         }
         updateUserStatus(currentUser.id, newStatus)
       } else {
-        // Set default status to ONLINE for new users
-        const newStatus = 'ONLINE'
-        setStatus(newStatus)
-        setUserStatus(currentUser.id, newStatus)
-        await supabase
-          .from('profiles')
-          .update({ status: newStatus })
-          .eq('id', currentUser.id)
+        // Set default status to ONLINE for new users or on initial mount
+        await handleStatusChange('ONLINE')
       }
+
+      // Mark initial mount as complete
+      setIsInitialMount(false)
     } catch (err) {
       setError(err instanceof Error ? err : new Error('Failed to fetch status'))
       console.error('Error fetching status:', err)
     } finally {
       setLoading(false)
     }
-  }, [currentUser, setUserStatus, updateUserStatus])
+  }, [currentUser, setUserStatus, updateUserStatus, isInitialMount])
 
-  const debouncedUpdateStatus = useDebounce(async (newStatus: UserStatus) => {
+  // Handle initial status fetch
+  useEffect(() => {
+    if (currentUser) {
+      getCurrentStatus()
+    }
+  }, [currentUser, getCurrentStatus])
+
+  const handleStatusChange = useCallback(async (newStatus: UserStatus) => {
     if (!currentUser) return
-
+    
     try {
       setUpdating(true)
       setError(null)
       
-      // Update status in database and cache
+      // Update local state immediately
+      setStatus(newStatus)
+      setUserStatus(currentUser.id, newStatus)
+      
+      // Update database
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({ status: newStatus })
+        .eq('id', currentUser.id)
+
+      if (updateError) throw updateError
+      
+      // Update cache
       await updateUserStatus(currentUser.id, newStatus)
     } catch (err) {
       setError(err instanceof Error ? err : new Error('Failed to update status'))
@@ -86,28 +103,7 @@ export function StatusManager() {
     } finally {
       setUpdating(false)
     }
-  }, 500)
-
-  const handleStatusChange = (newStatus: UserStatus) => {
-    if (!currentUser) return
-    
-    // Update local state and store immediately
-    setStatus(newStatus)
-    setUserStatus(currentUser.id, newStatus)
-    
-    // Debounce the database update
-    debouncedUpdateStatus(newStatus)
-  }
-
-  // Handle initial sign-in
-  useEffect(() => {
-    if (currentUser && isInitialMount) {
-      setIsInitialMount(false)
-      handleStatusChange('ONLINE')
-    } else if (currentUser) {
-      getCurrentStatus()
-    }
-  }, [currentUser, getCurrentStatus])
+  }, [currentUser, setUserStatus, updateUserStatus, status])
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
@@ -130,25 +126,34 @@ export function StatusManager() {
     return null
   }
 
-  if (loading) {
-    return (
-      <div 
-        className="flex items-center space-x-2" 
-        role="status" 
-        aria-label="Loading status"
+  return (
+    <div className="flex items-center space-x-2">
+      <select
+        value={status}
+        onChange={(e) => handleStatusChange(e.target.value as UserStatus)}
+        onKeyDown={handleKeyDown}
+        disabled={loading || updating}
+        className={`
+          bg-indigo-700 text-white text-sm rounded-md border-indigo-600 
+          focus:ring-2 focus:ring-indigo-500
+          ${(loading || updating) ? 'opacity-75 cursor-wait' : ''}
+        `}
+        aria-label="Set your status"
+        aria-busy={loading || updating}
       >
-        <div className="h-8 w-24 bg-indigo-700 animate-pulse rounded-md"></div>
-      </div>
-    )
-  }
-
-  if (error) {
-    return (
-      <div 
-        className="flex items-center space-x-2 text-red-500" 
-        role="alert"
-      >
-        <span className="text-sm">{error.message}</span>
+        <option value="ONLINE">🟢 Online</option>
+        <option value="AWAY">🟡 Away</option>
+        <option value="BUSY">🔴 Busy</option>
+        <option value="OFFLINE">⚫ Offline</option>
+      </select>
+      {(loading || updating) && (
+        <div 
+          className="w-4 h-4 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"
+          role="status"
+          aria-label={loading ? "Loading status" : "Updating status"}
+        />
+      )}
+      {error && (
         <button
           onClick={getCurrentStatus}
           className="text-red-600 hover:text-red-700 text-sm font-medium"
@@ -156,36 +161,6 @@ export function StatusManager() {
         >
           Retry
         </button>
-      </div>
-    )
-  }
-
-  return (
-    <div className="flex items-center space-x-2">
-      <select
-        value={status}
-        onChange={(e) => handleStatusChange(e.target.value as UserStatus)}
-        onKeyDown={handleKeyDown}
-        disabled={updating}
-        className={`
-          bg-indigo-700 text-white text-sm rounded-md border-indigo-600 
-          focus:ring-2 focus:ring-indigo-500
-          ${updating ? 'opacity-75 cursor-wait' : ''}
-        `}
-        aria-label="Set your status"
-        aria-busy={updating}
-      >
-        <option value="ONLINE">🟢 Online</option>
-        <option value="AWAY">🟡 Away</option>
-        <option value="BUSY">🔴 Busy</option>
-        <option value="OFFLINE">⚫ Offline</option>
-      </select>
-      {updating && (
-        <div 
-          className="w-4 h-4 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"
-          role="status"
-          aria-label="Updating status"
-        />
       )}
     </div>
   )

@@ -36,6 +36,8 @@
 | direct_messages            | content           | text                     |
 | direct_messages            | created_at        | timestamp with time zone |
 | direct_messages            | updated_at        | timestamp with time zone |
+| direct_messages            | attachments       | jsonb                    |
+| direct_messages            | parent_id         | uuid                     |
 | dm_channel_members         | id                | uuid                     |
 | dm_channel_members         | channel_id        | uuid                     |
 | dm_channel_members         | user_id           | uuid                     |
@@ -45,8 +47,12 @@
 | messages                   | channel_id        | uuid                     |
 | messages                   | user_id           | uuid                     |
 | messages                   | profile_id        | uuid                     |
-| messages                   | content           | text                     |
 | messages                   | inserted_at       | timestamp with time zone |
+| messages                   | created_at        | timestamp with time zone |
+| messages                   | attachments       | jsonb                    |
+| messages                   | updated_at        | timestamp with time zone |
+| messages                   | content           | text                     |
+| messages                   | parent_id         | uuid                     |
 | profiles                   | id                | uuid                     |
 | profiles                   | username          | text                     |
 | profiles                   | full_name         | text                     |

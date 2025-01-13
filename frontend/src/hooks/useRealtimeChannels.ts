@@ -45,6 +45,7 @@ export function useRealtimeChannels({ type }: UseRealtimeChannelsProps = {}) {
     if (!user) return;
 
     const loadChannels = async () => {
+      console.log('Loading channels...');
       setLoading(true);
       try {
         const query = supabase
@@ -64,11 +65,43 @@ export function useRealtimeChannels({ type }: UseRealtimeChannelsProps = {}) {
 
         if (queryError) throw queryError;
 
-        if (data) {
-          const processed = channelProcessor.processChannels(data);
-          setChannels(processed);
+        console.log('Received channels data:', data);
+
+        if (!data) {
+          console.log('No channels data received, setting empty list');
+          setChannels([]);
+          return;
+        }
+
+        // Process each channel individually to ensure proper handling
+        const processedChannels = await Promise.all(
+          data.map(async (channel) => {
+            try {
+              const processed = await channelProcessor.processChannel(channel);
+              if (!processed) {
+                console.warn('Failed to process channel:', channel.id);
+              }
+              return processed;
+            } catch (err) {
+              console.error('Error processing channel:', channel.id, err);
+              return null;
+            }
+          })
+        );
+
+        // Filter out null values and set channels
+        const validChannels = processedChannels.filter((ch): ch is ChannelWithDetails => ch !== null);
+        console.log('Processed channels:', validChannels);
+        
+        // Always call setChannels, even with empty array
+        setChannels(validChannels);
+        
+        if (validChannels.length === 0 && data.length > 0) {
+          console.warn('No channels could be processed from data');
+          setError(new Error('Failed to process any channels'));
         }
       } catch (err) {
+        console.error('Failed to load channels:', err);
         const error = err instanceof Error ? err : new Error('Failed to load channels');
         setError(error);
       } finally {
@@ -83,6 +116,8 @@ export function useRealtimeChannels({ type }: UseRealtimeChannelsProps = {}) {
   useEffect(() => {
     if (!user) return;
 
+    let isSubscribed = true;
+
     // Clear processed channels when subscribing
     channelProcessor.clearProcessedIds();
 
@@ -96,28 +131,48 @@ export function useRealtimeChannels({ type }: UseRealtimeChannelsProps = {}) {
           table: 'channels'
         },
         (payload) => {
-          if (payload.eventType === 'INSERT' && !channelProcessor.hasProcessed(payload.new.id)) {
-            processChannel(payload.new as Channel);
-          } else if (payload.eventType === 'UPDATE') {
-            const processed = channelProcessor.processChannel({
-              ...payload.new as Channel,
-              eventType: 'UPDATE'
-            });
-            if (processed) {
-              updateChannel(processed.id, processed);
+          if (!isSubscribed) return;
+
+          try {
+            if (payload.eventType === 'INSERT' && !channelProcessor.hasProcessed(payload.new.id)) {
+              processChannel(payload.new as Channel);
+            } else if (payload.eventType === 'UPDATE') {
+              const processed = channelProcessor.processChannel({
+                ...payload.new as Channel,
+                eventType: 'UPDATE'
+              });
+              if (processed) {
+                updateChannel(processed.id, processed);
+              }
+            } else if (payload.eventType === 'DELETE') {
+              removeChannel(payload.old.id);
             }
-          } else if (payload.eventType === 'DELETE') {
-            removeChannel(payload.old.id);
+          } catch (err) {
+            console.error('Error processing channel change:', err);
+            setError(err instanceof Error ? err : new Error('Failed to process channel change'));
           }
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          console.log('Successfully subscribed to channel changes');
+        } else if (status === 'CLOSED') {
+          console.log('Channel subscription closed');
+        } else if (status === 'CHANNEL_ERROR') {
+          console.error('Channel subscription error');
+          setError(new Error('Failed to subscribe to channel changes'));
+        }
+      });
 
     return () => {
+      isSubscribed = false;
+      if (channel) {
+        console.log('Cleaning up channel subscription');
+        supabase.removeChannel(channel);
+      }
       channelProcessor.clearProcessedIds();
-      supabase.removeChannel(channel);
     };
-  }, [user, channelProcessor, processChannel, updateChannel, removeChannel]);
+  }, [user, channelProcessor, processChannel, updateChannel, removeChannel, setError]);
 
   // Memoize channels array from store
   const channels = useMemo(() => {

@@ -100,18 +100,54 @@ export const useChannelStore = create<ChannelState>()(
         // Batch operations
         setChannels: (channelsOrUpdater) =>
           set((state) => {
-            const channels = typeof channelsOrUpdater === 'function' 
-              ? channelsOrUpdater(state.channels)
-              : channelsOrUpdater;
+            console.log('Setting channels:', channelsOrUpdater);
+            
+            let newChannels: ChannelWithDetails[];
+            if (typeof channelsOrUpdater === 'function') {
+              const currentChannels = Array.from(state.channels.values());
+              newChannels = channelsOrUpdater(currentChannels);
+            } else {
+              newChannels = channelsOrUpdater;
+            }
 
-            const newChannels = new Map(
-              (Array.isArray(channels) ? channels : [])
-                .filter(ch => ch && ch.id)
-                .map(ch => [ch.id, ch])
+            // If no channels provided, keep existing state
+            if (!newChannels || !Array.isArray(newChannels)) {
+              console.warn('No channels provided to setChannels');
+              return state;
+            }
+
+            // Validate channels before setting
+            const validChannels = newChannels.filter((ch): ch is ChannelWithDetails => {
+              const isValid = ch && typeof ch === 'object' && 'id' in ch;
+              if (!isValid) {
+                console.warn('Invalid channel found:', ch);
+              }
+              return isValid;
+            });
+
+            console.log('Setting valid channels:', validChannels);
+
+            // If no valid channels and we already have channels, keep existing state
+            if (validChannels.length === 0 && state.channels.size > 0) {
+              console.warn('No valid channels in update, keeping existing channels');
+              return {
+                ...state,
+                loading: false,
+                error: null
+              };
+            }
+
+            // Create new Map from valid channels
+            const channelsMap = new Map(
+              validChannels.map(ch => [ch.id, ch])
             );
 
+            // Merge with existing channels if needed
+            const finalChannels = new Map([...state.channels, ...channelsMap]);
+
             return {
-              channels: newChannels,
+              ...state,
+              channels: finalChannels,
               loading: false,
               error: null
             };
@@ -139,29 +175,46 @@ export const useChannelStore = create<ChannelState>()(
             try {
               const { state } = JSON.parse(str);
               
-              // Convert serialized maps back to Map objects
+              // Convert serialized maps back to Map objects with better error handling
               const channels = new Map(
-                Array.isArray(state.channels) 
+                Array.isArray(state?.channels) 
                   ? state.channels 
-                  : state.channels?.data || []
+                  : Array.isArray(state?.channels?.data)
+                    ? state.channels.data 
+                    : []
               );
               
               const optimisticChannels = new Map(
-                Array.isArray(state.optimisticChannels)
+                Array.isArray(state?.optimisticChannels)
                   ? state.optimisticChannels
-                  : state.optimisticChannels?.data || []
+                  : Array.isArray(state?.optimisticChannels?.data)
+                    ? state.optimisticChannels.data 
+                    : []
               );
 
               return {
                 state: {
                   ...state,
                   channels,
-                  optimisticChannels
+                  optimisticChannels,
+                  // Ensure other required fields have defaults
+                  activeChannel: state?.activeChannel ?? null,
+                  loading: false,
+                  error: null
                 }
               };
             } catch (err) {
               console.error('Error parsing channel store:', err);
-              return null;
+              // Return a fresh state on error instead of null
+              return {
+                state: {
+                  channels: new Map(),
+                  optimisticChannels: new Map(),
+                  activeChannel: null,
+                  loading: false,
+                  error: null
+                }
+              };
             }
           },
           setItem: (name, value) => {

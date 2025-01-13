@@ -32,6 +32,7 @@ export interface Message {
   content?: string
   message?: string
   attachments?: MessageAttachment[]
+  parent_id?: string | null
   created_at: string
   updated_at: string
   inserted_at?: string
@@ -72,6 +73,7 @@ export interface DirectMessage {
   profile_id: string
   content: string
   attachments?: MessageAttachment[]
+  parent_id?: string | null
   created_at: string
   updated_at: string
 }
