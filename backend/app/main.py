@@ -9,8 +9,7 @@ from app.models.channel import Channel, ChannelMember  # Import Channel models
 from app.models.direct_message import (  # Import DirectMessage models
     DirectMessageChannel,
     DirectMessageMember,
-    DirectMessage,
-    DirectMessageAttachment
+    DirectMessage
 )
 from app.models.message import Message, MessageAttachment  # Then dependent models
 from app.api.api import api_router  # Import the API router

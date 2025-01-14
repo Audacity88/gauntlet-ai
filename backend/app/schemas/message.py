@@ -40,14 +40,6 @@ class MessageAttachment(MessageAttachmentBase):
     class Config:
         orm_mode = True
 
-class DirectMessageAttachment(MessageAttachmentBase):
-    id: UUID4
-    direct_message_id: UUID4
-    inserted_at: datetime
-
-    class Config:
-        orm_mode = True
-
 class Message(MessageBase):
     id: UUID4
     channel_id: UUID4
@@ -60,7 +52,6 @@ class Message(MessageBase):
 class DirectMessage(DirectMessageBase):
     id: UUID4
     inserted_at: datetime
-    attachments: List[DirectMessageAttachment] = []
 
     class Config:
         orm_mode = True

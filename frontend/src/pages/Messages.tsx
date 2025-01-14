@@ -8,6 +8,7 @@ import { useUserCache } from '../hooks/useUserCache'
 import { supabase } from '../lib/supabaseClient'
 import { useStatusStore } from '../stores/statusStore'
 import { UserPresence } from '../components/UserPresence'
+import { UserList } from '../components/UserList'
 
 type ChatType = 'channel' | 'dm'
 
@@ -58,32 +59,18 @@ export default function Messages() {
     }
   }
 
-  const handleCreateDM = async () => {
+  const handleCreateDM = async (selectedUser: User) => {
     if (!currentUser) {
       alert('Please sign in to send direct messages')
       return
     }
-    const username = prompt('Enter username to message:')
-    if (!username) return
     
     try {
-      // First check if user exists
-      const { data: userProfile, error: userError } = await supabase
-        .from('profiles')
-        .select('id, username, full_name')
-        .eq('username', username)
-        .single()
-
-      if (userError || !userProfile) {
-        alert(`User "${username}" not found. Please check the username and try again.`)
-        return
-      }
-
-      const channelId = await createDirectMessage(username)
+      const channelId = await createDirectMessage(selectedUser.username)
       setCurrentChat({
         type: 'dm',
         id: channelId,
-        name: userProfile.username || userProfile.full_name || 'Unknown User'
+        name: selectedUser.username || selectedUser.full_name || 'Unknown User'
       })
     } catch (err) {
       console.error('Failed to create DM:', err)
@@ -208,12 +195,6 @@ export default function Messages() {
         <div>
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-bold text-black">Direct Messages</h2>
-            <button
-              onClick={handleCreateDM}
-              className="px-3 py-1 bg-indigo-600 text-white rounded hover:bg-indigo-700"
-            >
-              + New
-            </button>
           </div>
 
           {dmsLoading ? (
@@ -249,42 +230,33 @@ export default function Messages() {
                           <span className="text-black">{displayName}</span>
                           {otherUser && <UserPresence userId={otherUser.id} size="sm" />}
                         </div>
-                        {(dm.unread_count ?? 0) > 0 && (
-                          <span className="bg-indigo-500 text-white text-xs px-1.5 rounded-full">
-                            {dm.unread_count}
-                          </span>
-                        )}
                       </div>
-                      {dm.messages?.[0] && (
-                        <div className="text-xs text-gray-600 truncate">
-                          {dm.messages[0].content}
-                        </div>
-                      )}
                     </button>
                   )
                 })}
             </div>
           )}
         </div>
+
+        {/* User List Section */}
+        <div className="mt-6">
+          <h2 className="text-lg font-bold text-black mb-4">All Users</h2>
+          <UserList
+            onUserSelect={handleCreateDM}
+            showPresence={true}
+            filter="all"
+          />
+        </div>
       </div>
 
-      {/* Main Content */}
-      <div className="flex-1 overflow-hidden">
+      {/* Chat Area */}
+      <div className="flex-1 h-full">
         {currentChat ? (
-          <div className="h-full flex flex-col">
-            <div className="bg-white border-b px-6 py-3">
-              <h1 className="text-lg font-semibold text-black">
-                {currentChat.type === 'channel' ? '#' : ''} {currentChat.name}
-              </h1>
-            </div>
-            <div className="flex-1 overflow-hidden">
-              <MessageList 
-                channelId={currentChat.id}
-                chatType={currentChat.type}
-                key={`${currentChat.type}-${currentChat.id}`}
-              />
-            </div>
-          </div>
+          <MessageList
+            channelId={currentChat.id}
+            chatType={currentChat.type}
+            chatName={currentChat.name}
+          />
         ) : (
           <div className="h-full flex items-center justify-center text-gray-500">
             Select a channel or direct message to start chatting

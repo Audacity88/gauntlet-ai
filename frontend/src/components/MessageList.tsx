@@ -18,12 +18,14 @@ interface MessageError {
 interface MessageListProps {
   channelId: string;
   chatType?: 'channel' | 'dm';
+  chatName?: string;
   markChannelAsRead?: (channelId: string) => Promise<void>;
 }
 
 const MessageListContent = memo(function MessageListContent({
   channelId,
   chatType = 'channel',
+  chatName,
   markChannelAsRead
 }: MessageListProps) {
   const [searchQuery, setSearchQuery] = useState('');
@@ -191,7 +193,10 @@ const MessageListContent = memo(function MessageListContent({
       {/* Main area: messages + input */}
       <div className="flex-1 flex flex-col">
         {/* Search bar */}
-        <div className="p-4 border-b">
+        <div className="p-4 border-b flex items-center justify-between">
+          <h1 className="text-lg font-semibold text-black">
+            {chatType === 'channel' ? '#' : ''} {chatName}
+          </h1>
           <SearchBar onSearch={handleSearch} placeholder="Search messages..." />
         </div>
 
