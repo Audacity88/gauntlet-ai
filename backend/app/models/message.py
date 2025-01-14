@@ -1,39 +1,51 @@
-from sqlalchemy import Column, String, Integer, DateTime, ForeignKey, Text
-from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.sql import func
-from sqlalchemy.orm import relationship
-from uuid import uuid4
-
+from datetime import datetime
+from uuid import UUID
+from sqlalchemy import String, DateTime, ForeignKey, text
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.dialects.postgresql import UUID as PGUUID, JSONB
 from app.models.base import Base
 
 class Message(Base):
+    """Message model for storing chat messages."""
+    
     __tablename__ = "messages"
     __table_args__ = {"schema": "public"}
-
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
-    channel_id = Column(UUID(as_uuid=True), ForeignKey("public.channels.id", ondelete="CASCADE"), nullable=False)
-    user_id = Column(UUID(as_uuid=True), ForeignKey("auth.users.id", ondelete="CASCADE"), nullable=False)
-    profile_id = Column(UUID(as_uuid=True), ForeignKey("public.profiles.id", ondelete="CASCADE"), nullable=False)
-    content = Column(Text, nullable=False)
-    inserted_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-
+    
+    # Primary key
+    id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), 
+        primary_key=True,
+        server_default=text("uuid_generate_v4()")
+    )
+    
+    # Foreign key to auth.users
+    user_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("auth.users.id", ondelete="CASCADE"),
+        nullable=False
+    )
+    
+    # Message content
+    content: Mapped[str] = mapped_column(String, nullable=False)
+    
+    # Optional metadata
+    message_metadata: Mapped[dict] = mapped_column(JSONB, nullable=True)
+    
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=text("now()"),
+        nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=text("now()"),
+        onupdate=datetime.utcnow,
+        nullable=False
+    )
+    
     # Relationships
-    channel = relationship("Channel", back_populates="messages")
-    user = relationship("User", back_populates="messages")
-    profile = relationship("Profile", back_populates="messages")
-    attachments = relationship("MessageAttachment", back_populates="message", cascade="all, delete-orphan")
-
-class MessageAttachment(Base):
-    __tablename__ = "message_attachments"
-    __table_args__ = {"schema": "public"}
-
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
-    message_id = Column(UUID(as_uuid=True), ForeignKey("public.messages.id", ondelete="CASCADE"), nullable=False)
-    filename = Column(String, nullable=False)
-    file_path = Column(String, nullable=False)
-    file_size = Column(Integer, nullable=False)
-    content_type = Column(String, nullable=False)
-    inserted_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-
-    # Relationships
-    message = relationship("Message", back_populates="attachments") 
+    user = relationship("User", backref="messages")
+    
+    def __repr__(self) -> str:
+        return f"<Message {self.id}: {self.content[:50]}...>" 
