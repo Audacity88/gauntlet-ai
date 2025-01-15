@@ -3,6 +3,7 @@ import logging
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import ConfigDict
 import os
+from urllib.parse import urlparse, parse_qs, urlencode
 
 logger = logging.getLogger(__name__)
 
@@ -22,19 +23,17 @@ class Settings(BaseSettings):
     # Supabase Configuration
     SUPABASE_URL: str
     SUPABASE_KEY: str
-    SUPABASE_JWT_SECRET: str  # Required - must be set from environment
-    SUPABASE_DB_URL: Optional[str] = None  # Direct database connection URL
+    SUPABASE_SERVICE_KEY: str
     
-    # Database URL
-    DATABASE_URL: Optional[str] = None
-    TEST_DATABASE_URL: Optional[str] = "postgresql+asyncpg://postgres:postgres@localhost:5432/test_db"
+    # Database Configuration
+    DATABASE_URL: str
     
-    # OpenAI
+    # OpenAI Configuration
     OPENAI_API_KEY: str
     
-    # JWT Settings
-    SECRET_KEY: str = None  # Will be set to SUPABASE_JWT_SECRET in __init__
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    # JWT Configuration
+    SECRET_KEY: str
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 43200  # 30 days
     
     # Environment
     ENVIRONMENT: str = "development"
@@ -42,38 +41,31 @@ class Settings(BaseSettings):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         
-        # Set SECRET_KEY to SUPABASE_JWT_SECRET
-        if not self.SUPABASE_JWT_SECRET:
-            raise ValueError("SUPABASE_JWT_SECRET environment variable must be set")
-        self.SECRET_KEY = self.SUPABASE_JWT_SECRET
+        # Convert database URL to use asyncpg
+        original_url = self.DATABASE_URL
         
-        # Use provided DATABASE_URL if available, otherwise construct from components
-        if self.DATABASE_URL:
-            db_url = self.DATABASE_URL
-        elif self.SUPABASE_DB_URL:
-            db_url = self.SUPABASE_DB_URL
-        else:
-            # Use local database for development
-            db_url = self.TEST_DATABASE_URL
-            
-        # Add asyncpg driver if not present
-        if not "+" in db_url.split("://")[0]:
-            protocol = db_url.split("://")[0]
-            rest = db_url.split("://")[1]
-            db_url = f"{protocol}+asyncpg://{rest}"
-            
-        # Remove any existing SSL mode parameter
-        if "?sslmode=" in db_url:
-            db_url = db_url.split("?sslmode=")[0]
-        elif "&sslmode=" in db_url:
-            db_url = db_url.split("&sslmode=")[0]
-            
-        # Clean up the URL and ensure no spaces
-        self.DATABASE_URL = db_url.replace(" ", "").strip()
+        # Parse the URL
+        parsed = urlparse(original_url)
+        query_params = parse_qs(parsed.query)
+        
+        # Remove sslmode from query parameters if present
+        if 'sslmode' in query_params:
+            del query_params['sslmode']
+        
+        # Reconstruct the URL without sslmode
+        clean_url = f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
+        if query_params:
+            clean_url += "?" + urlencode({k: v[0] for k, v in query_params.items()}, quote_via=lambda x,*_: x)
+        
+        # Convert to asyncpg format
+        if clean_url.startswith(('postgres://', 'postgresql://')):
+            self.DATABASE_URL = clean_url.replace('postgres://', 'postgresql+asyncpg://', 1)
+            self.DATABASE_URL = self.DATABASE_URL.replace('postgresql://', 'postgresql+asyncpg://', 1)
+            logger.info(f"Database URL converted to asyncpg format")
+            logger.debug(f"Original URL: {original_url}")
+            logger.debug(f"Final URL: {self.DATABASE_URL}")
         
         logger.info("Settings initialized")
         logger.info(f"Environment: {self.ENVIRONMENT}")
-        logger.info(f"Database URL: {self.DATABASE_URL}")
-        logger.info(f"Supabase URL: {self.SUPABASE_URL if self.SUPABASE_URL else 'Not set'}")
 
-settings = Settings() 
+settings = Settings()

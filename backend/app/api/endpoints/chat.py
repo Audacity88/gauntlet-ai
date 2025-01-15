@@ -1,4 +1,4 @@
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from uuid import UUID
 import logging
 from pydantic import BaseModel, Field
@@ -33,6 +33,17 @@ class MessageRequest(BaseModel):
     def message_uuid(self) -> Optional[UUID]:
         """Convert message_id string to UUID if present."""
         return UUID(self.message_id) if self.message_id else None
+    
+    @property
+    def target_user_uuid(self) -> UUID:
+        """Convert target_user_id string to UUID."""
+        return UUID(self.target_user_id)
+
+class HistoryRequest(BaseModel):
+    """Request model for fetching user message history."""
+    target_user_id: str = Field(..., description="ID of the user to get history for")
+    is_dm: bool = False
+    limit: int = Field(default=50, ge=1, le=100, description="Maximum number of messages to return")
     
     @property
     def target_user_uuid(self) -> UUID:
@@ -138,4 +149,63 @@ async def stream_message(
         raise HTTPException(
             status_code=500,
             detail=f"Error processing message: {str(e)}"
+        )
+
+@router.post("/history")
+async def get_user_history(
+    request: HistoryRequest,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session)
+) -> Dict[str, Any]:
+    """Get message history for a specific user."""
+    try:
+        logger.info(f"Fetching history for user {request.target_user_id}")
+        history_manager = UserHistoryManager(session)
+        
+        try:
+            messages = await history_manager.get_user_messages(
+                user_id=request.target_user_uuid,
+                limit=request.limit,
+                is_dm=request.is_dm
+            )
+        except Exception as e:
+            logger.error(f"Error in get_user_messages: {str(e)}")
+            logger.exception(e)
+            raise
+        
+        logger.info(f"Found {len(messages)} messages")
+        
+        # Transform messages into the format expected by the frontend
+        formatted_messages = []
+        try:
+            for msg in messages:
+                formatted_messages.append({
+                    "content": msg["content"],
+                    "sender": {
+                        "id": str(request.target_user_uuid),
+                        "username": msg["metadata"]["username"]
+                    },
+                    "created_at": msg["metadata"]["timestamp"],
+                    "id": msg["metadata"]["message_id"]
+                })
+        except Exception as e:
+            logger.error(f"Error formatting messages: {str(e)}")
+            logger.error(f"Message that caused error: {msg}")
+            logger.exception(e)
+            raise HTTPException(
+                status_code=500,
+                detail=f"Error formatting messages: {str(e)}"
+            )
+        
+        return {
+            "messages": formatted_messages,
+            "total": len(formatted_messages)
+        }
+        
+    except Exception as e:
+        logger.error(f"Error fetching user history: {str(e)}")
+        logger.exception(e)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error fetching user history: {str(e)}"
         ) 
