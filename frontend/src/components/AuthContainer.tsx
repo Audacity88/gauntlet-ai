@@ -11,7 +11,7 @@ export function AuthContainer() {
       <div className="w-full max-w-md">
         <div className="mb-8 text-center">
           <h1 className="text-3xl font-bold text-indigo-800">ChatGenius</h1>
-          <p className="mt-2 text-gray-600">Sign in to start chatting</p>
+          <p className="mt-2 text-gray-600">Create an account or sign in to continue</p>
         </div>
         <div className="bg-white rounded-lg shadow-md p-6">
           <Auth
@@ -37,19 +37,19 @@ export function AuthContainer() {
             }}
             localization={{
               variables: {
+                sign_up: {
+                  email_label: 'Email',
+                  password_label: 'Password',
+                  button_label: 'Create account',
+                  loading_button_label: 'Creating account...',
+                  link_text: 'Need an account? Sign up'
+                },
                 sign_in: {
                   email_label: 'Email',
                   password_label: 'Password',
                   button_label: 'Sign in',
                   loading_button_label: 'Signing in...',
                   link_text: "Don't have an account? Sign up"
-                },
-                sign_up: {
-                  email_label: 'Email',
-                  password_label: 'Password',
-                  button_label: 'Sign up',
-                  loading_button_label: 'Signing up...',
-                  link_text: 'Already have an account? Sign in'
                 }
               }
             }}

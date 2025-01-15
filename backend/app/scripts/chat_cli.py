@@ -24,7 +24,7 @@ from app.models.message import Message
 from app.core.config import settings
 
 # Configuration
-BASE_URL = "http://localhost:8000/api"
+BASE_URL = "http://localhost:8000/api/chat"  # Updated to match FastAPI router
 TOKEN = os.getenv("CHAT_TOKEN")  # JWT token for authentication
 
 HELP_TEXT = """
@@ -91,8 +91,8 @@ async def send_message(
     
     headers = {
         "Authorization": f"Bearer {TOKEN.strip()}",
-        "Content-Type": "application/json",
-        "Accept": "application/json"
+        "Accept": "application/json",
+        "Content-Type": "application/json"
     }
     
     data = {
@@ -102,15 +102,17 @@ async def send_message(
         "is_dm": is_dm
     }
     
-    print(f"\nSending request to: {BASE_URL}/chat{'stream' if stream else 'send'}")
+    # Set endpoint before using it
+    endpoint = "stream" if stream else "send"
+    
+    print(f"\nSending request to: {BASE_URL}/{endpoint}")
     print(f"Request data: {json.dumps(data, indent=2)}")
     
     # Send to API
-    endpoint = "/stream" if stream else "/send"
     async with httpx.AsyncClient() as client:
         try:
             response = await client.post(
-                f"{BASE_URL}/chat{endpoint}",
+                f"{BASE_URL}/{endpoint}",
                 headers=headers,
                 json=data,
                 timeout=30.0
@@ -336,17 +338,20 @@ async def chat_loop() -> None:
                 if state.streaming:
                     await process_stream(response)
                 else:
-                    data = response.json()
-                    print(f"\nAvatar: {data['content']}")
-                    if state.show_metadata:
-                        print(f"\nModel: {data['model']}")
-                        if "usage" in data:
-                            total_tokens = data["usage"].get("total_tokens", 0)
-                            print(f"Tokens used: {total_tokens}")
-                
-                # Update message context for continuity
-                if not state.streaming and "message_id" in data:
-                    state.message_id = data["message_id"]
+                    try:
+                        data = response.json()
+                        print(f"\nAvatar: {data['content']}")
+                        if state.show_metadata:
+                            print(f"\nModel: {data.get('model', 'unknown')}")
+                            if "usage" in data:
+                                total_tokens = data["usage"].get("total_tokens", 0)
+                                print(f"Tokens used: {total_tokens}")
+                        
+                        # Update message context for continuity
+                        if "message_id" in data:
+                            state.message_id = data["message_id"]
+                    except Exception as e:
+                        print(f"\nError processing response: {str(e)}")
             
             except Exception as e:
                 print(f"\nError: {str(e)}")

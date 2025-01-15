@@ -57,6 +57,12 @@ export function Layout({ children }: LayoutProps) {
           >
             Messages
           </Link>
+          <Link 
+            to="/avatar-chat" 
+            className="block px-3 py-2 text-indigo-100 hover:bg-indigo-700 rounded-md"
+          >
+            AI Avatar Chat
+          </Link>
         </nav>
       </div>
 

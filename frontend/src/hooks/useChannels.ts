@@ -41,15 +41,23 @@ export function useChannels() {
           .from('channels')
           .select(`
             *,
-            creator:profiles!channels_created_by_fkey(*)
+            creator:profiles!channels_created_by_fkey(*),
+            members:channel_members(
+              user_id,
+              role
+            )
           `)
           .order('inserted_at', { ascending: false })
 
         if (loadError) throw loadError
 
-        // Process channels with ChannelProcessor
+        // Filter channels to only include those where user is a member
         const processedChannels = await Promise.all(
-          (data || []).map(channel => channelProcessor.processChannel(channel))
+          (data || [])
+            .filter(channel => 
+              channel.members?.some((member: any) => member.user_id === user.id)
+            )
+            .map(channel => channelProcessor.processChannel(channel))
         )
         
         // Only update channels if we have data and component is still mounted
@@ -138,15 +146,23 @@ export function useChannels() {
         .from('channels')
         .select(`
           *,
-          creator:profiles!channels_created_by_fkey(*)
+          creator:profiles!channels_created_by_fkey(*),
+          members:channel_members(
+            user_id,
+            role
+          )
         `)
         .order('inserted_at', { ascending: false })
 
       if (loadError) throw loadError
 
-      // Process channels with ChannelProcessor
+      // Filter channels to only include those where user is a member
       const processedChannels = await Promise.all(
-        (data || []).map(channel => channelProcessor.processChannel(channel))
+        (data || [])
+          .filter(channel => 
+            channel.members?.some((member: any) => member.user_id === user.id)
+          )
+          .map(channel => channelProcessor.processChannel(channel))
       )
       
       // Only update channels if we have data

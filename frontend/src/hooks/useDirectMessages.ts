@@ -198,22 +198,57 @@ export function useDirectMessages() {
         throw new Error(userError?.message || `User "${otherUsername}" not found`)
       }
 
-      // Use RPC to find or create DM channel
-      const { data: channelId, error: rpcError } = await supabase
-        .rpc('find_or_create_dm_channel', {
-          p_user_id: user.id,
-          p_other_user_id: otherProfile.id
-        })
+      // First check if a DM channel already exists between these users
+      const { data: existingChannel, error: existingError } = await supabase
+        .from('direct_message_channels')
+        .select(`
+          id,
+          members:direct_message_members(user_id)
+        `)
+        .contains('members', [{ user_id: user.id }, { user_id: otherProfile.id }])
+        .single()
 
-      if (rpcError) {
-        console.error('RPC error:', rpcError)
-        throw new Error('Failed to create or find DM channel')
+      if (!existingError && existingChannel) {
+        return existingChannel.id
+      }
+
+      // If no channel exists, create one
+      const { data: newChannel, error: channelError } = await supabase
+        .from('direct_message_channels')
+        .insert({})
+        .select('id')
+        .single()
+
+      if (channelError) {
+        console.error('Channel creation error:', channelError)
+        throw new Error('Failed to create DM channel')
+      }
+
+      // Add both users as members
+      const { error: membersError } = await supabase
+        .from('direct_message_members')
+        .insert([
+          {
+            channel_id: newChannel.id,
+            user_id: user.id,
+            profile_id: user.id
+          },
+          {
+            channel_id: newChannel.id,
+            user_id: otherProfile.id,
+            profile_id: otherProfile.id
+          }
+        ])
+
+      if (membersError) {
+        console.error('Member creation error:', membersError)
+        throw new Error('Failed to add users to DM channel')
       }
 
       // Refresh channels to include the new one
       await loadChannels()
 
-      return channelId
+      return newChannel.id
     } catch (err) {
       console.error('Failed to create direct message:', err)
       throw err instanceof Error ? err : new Error('Failed to create direct message')

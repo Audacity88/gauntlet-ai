@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     # Supabase Configuration
     SUPABASE_URL: str
     SUPABASE_KEY: str
-    SUPABASE_JWT_SECRET: str
+    SUPABASE_JWT_SECRET: str  # Required - must be set from environment
     SUPABASE_DB_URL: Optional[str] = None  # Direct database connection URL
     
     # Database URL
@@ -43,28 +43,33 @@ class Settings(BaseSettings):
         super().__init__(**kwargs)
         
         # Set SECRET_KEY to SUPABASE_JWT_SECRET
+        if not self.SUPABASE_JWT_SECRET:
+            raise ValueError("SUPABASE_JWT_SECRET environment variable must be set")
         self.SECRET_KEY = self.SUPABASE_JWT_SECRET
         
-        # Use direct Supabase database URL if available
-        if self.ENVIRONMENT == "production" and self.SUPABASE_DB_URL:
-            # Get password from environment variable
-            password = os.environ.get('SUPABASE_DB_PASSWORD')
-            if not password:
-                raise ValueError("SUPABASE_DB_PASSWORD environment variable is not set")
-            
-            # Construct database URL with correct host and port
-            self.DATABASE_URL = f"postgresql+asyncpg://postgres.gkwdjhgfeqzpypucnnnx:{password}@aws-0-us-west-1.pooler.supabase.com:5432/postgres?sslmode=require"
-        elif self.DATABASE_URL:
-            # Use provided DATABASE_URL if available
+        # Use provided DATABASE_URL if available, otherwise construct from components
+        if self.DATABASE_URL:
             db_url = self.DATABASE_URL
-            if not "+" in db_url.split("://")[0]:
-                protocol = db_url.split("://")[0]
-                rest = db_url.split("://")[1]
-                db_url = f"{protocol}+asyncpg://{rest}"
-            self.DATABASE_URL = db_url.replace(" ", "").strip()
+        elif self.SUPABASE_DB_URL:
+            db_url = self.SUPABASE_DB_URL
         else:
             # Use local database for development
-            self.DATABASE_URL = self.TEST_DATABASE_URL
+            db_url = self.TEST_DATABASE_URL
+            
+        # Add asyncpg driver if not present
+        if not "+" in db_url.split("://")[0]:
+            protocol = db_url.split("://")[0]
+            rest = db_url.split("://")[1]
+            db_url = f"{protocol}+asyncpg://{rest}"
+            
+        # Remove any existing SSL mode parameter
+        if "?sslmode=" in db_url:
+            db_url = db_url.split("?sslmode=")[0]
+        elif "&sslmode=" in db_url:
+            db_url = db_url.split("&sslmode=")[0]
+            
+        # Clean up the URL and ensure no spaces
+        self.DATABASE_URL = db_url.replace(" ", "").strip()
         
         logger.info("Settings initialized")
         logger.info(f"Environment: {self.ENVIRONMENT}")
