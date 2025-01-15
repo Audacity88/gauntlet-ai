@@ -6,9 +6,13 @@ from app.core.config import settings
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
+
+# Set specific loggers to DEBUG level
+logging.getLogger("app.api.deps").setLevel(logging.DEBUG)
+logging.getLogger("uvicorn").setLevel(logging.INFO)
 
 app = FastAPI(
     title="Chat API",

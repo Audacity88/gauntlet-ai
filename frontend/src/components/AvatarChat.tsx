@@ -6,7 +6,7 @@ import { UserList } from './UserList';
 import { User } from '../types/models';
 import { useAuth } from '../hooks/useAuth';
 import { useDirectMessages } from '../hooks/useDirectMessages';
-import { supabase } from '../lib/supabaseClient';
+import apiClient from '../lib/apiClient';
 
 interface AvatarChatProps {
   className?: string;
@@ -58,28 +58,17 @@ export function AvatarChat({ className = '' }: AvatarChatProps) {
       // First send message to the channel for display
       await sendMessage(content);
 
-      // Send to avatar API using the same endpoint as chat_cli.py
-      const response = await fetch('http://localhost:8000/api/chat', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${supabase.auth.session()?.access_token}`
-        },
-        body: JSON.stringify({
-          message: content,
-          target_user_id: targetUser.id,
-          message_id: messageId,
-          stream: isStreaming
-        })
+      // Send to avatar API using our API client
+      const response = await apiClient.post('/api/chat', {
+        message: content,
+        target_user_id: targetUser.id,
+        message_id: messageId,
+        stream: isStreaming
       });
-
-      if (!response.ok) {
-        throw new Error(`API error: ${response.statusText}`);
-      }
 
       if (isStreaming) {
         // Handle streaming response
-        const reader = response.body?.getReader();
+        const reader = response.data.getReader();
         const decoder = new TextDecoder();
         let streamedContent = '';
 
@@ -109,7 +98,7 @@ export function AvatarChat({ className = '' }: AvatarChatProps) {
         }
       } else {
         // Handle regular response
-        const data = await response.json();
+        const data = response.data;
         await sendMessage(data.content, { sender: targetUser });
 
         // Update message context
@@ -118,11 +107,11 @@ export function AvatarChat({ className = '' }: AvatarChatProps) {
         }
       }
 
-    } catch (err) {
-      console.error('Failed to send message:', err);
-      alert(err instanceof Error ? err.message : 'Failed to send message');
+    } catch (error) {
+      console.error('Error sending message:', error);
+      alert('Failed to send message. Please try again.');
     }
-  }, [targetUser, sendMessage, messageId, isStreaming]);
+  }, [targetUser, messageId, isStreaming, sendMessage]);
 
   const handleToggleStreaming = useCallback(() => {
     setIsStreaming(prev => !prev);

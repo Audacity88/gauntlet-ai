@@ -28,8 +28,11 @@ export class AuthManager {
 
   private async initialize() {
     try {
+      // Get initial session
       const { data: { session }, error } = await supabase.auth.getSession()
       if (error) throw error
+
+      console.log('Initial session:', session) // Debug log
 
       if (session) {
         await this.handleSession(session)
@@ -42,6 +45,7 @@ export class AuthManager {
 
       // Subscribe to auth changes
       const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+        console.log('Auth state change:', event, session) // Debug log
         if (session) {
           await this.handleSession(session)
         } else {
@@ -51,12 +55,15 @@ export class AuthManager {
 
       this.authSubscription = subscription
     } catch (error) {
+      console.error('Auth initialization error:', error) // Debug log
       this.handleError(error)
     }
   }
 
   private async handleSession(session: Session) {
     try {
+      console.log('Handling session:', session) // Debug log
+
       const emailUsername = session.user.email?.split('@')[0];
       const username = session.user.user_metadata.username || emailUsername || 'unknown';
 
@@ -83,6 +90,7 @@ export class AuthManager {
       // Schedule token refresh
       this.scheduleRefresh(session.expires_in)
     } catch (error) {
+      console.error('Session handling error:', error) // Debug log
       this.handleError(error)
     }
   }
@@ -144,12 +152,59 @@ export class AuthManager {
   public async signInWithEmail(email: string, password: string): Promise<void> {
     try {
       this.updateState({ loading: true, error: null })
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password
+      console.log('Attempting sign in with email:', email)
+      console.log('Supabase client config:', {
+        url: import.meta.env.VITE_SUPABASE_URL,
+        anonKeyPrefix: import.meta.env.VITE_SUPABASE_ANON_KEY.substring(0, 10)
       })
-      if (error) throw error
+
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+        options: {
+          redirectTo: window.location.origin
+        }
+      })
+
+      if (error) {
+        console.error('Sign in error details:', {
+          message: error.message,
+          status: error.status,
+          name: error.name,
+          stack: error.stack
+        })
+        throw error
+      }
+      
+      console.log('Sign in response:', {
+        session: data.session ? {
+          ...data.session,
+          access_token: data.session.access_token.substring(0, 10) + '...',
+          expires_at: new Date(data.session.expires_at! * 1000).toISOString(),
+          user: {
+            id: data.session.user.id,
+            email: data.session.user.email,
+            role: data.session.user.role
+          }
+        } : null
+      })
+
+      // Verify we got a session
+      if (!data.session) {
+        throw new Error('No session returned after sign in')
+      }
+
+      // Store session
+      const currentSession = await supabase.auth.getSession()
+      console.log('Current session after sign in:', {
+        session: currentSession.data.session ? {
+          user: currentSession.data.session.user.email,
+          expires_at: new Date(currentSession.data.session.expires_at * 1000).toISOString()
+        } : null
+      })
+
     } catch (error) {
+      console.error('Sign in error:', error)
       this.handleError(error)
       throw error
     }
