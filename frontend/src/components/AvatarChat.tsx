@@ -133,62 +133,72 @@ export function AvatarChat({ className = '' }: AvatarChatProps) {
   }, []);
 
   return (
-    <div className={`flex h-full ${className}`}>
+    <div className="flex h-full">
       {/* Sidebar */}
-      <div className="w-64 bg-gray-50 border-r p-4">
-        <div className="mb-6">
-          <h2 className="text-lg font-bold text-black mb-4">Target User</h2>
-          <UserList
-            onUserSelect={handleUserSelect}
-            showPresence={true}
-            filter="all"
-            selectedUserId={targetUser?.id}
-          />
-        </div>
-
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-medium text-gray-700">Streaming Mode</span>
-            <button
-              onClick={handleToggleStreaming}
-              className={`relative inline-flex h-6 w-11 items-center rounded-full ${
-                isStreaming ? 'bg-indigo-600' : 'bg-gray-200'
-              }`}
-            >
-              <span
-                className={`inline-block h-4 w-4 transform rounded-full bg-white transition ${
-                  isStreaming ? 'translate-x-6' : 'translate-x-1'
-                }`}
-              />
-            </button>
+      <div className="w-64 bg-gray-50 border-r flex flex-col overflow-hidden">
+        {/* Scrollable user list section */}
+        <div className="flex-1 p-4 overflow-y-auto">
+          <div className="mb-6">
+            <h2 className="text-lg font-bold text-black mb-4">Target User</h2>
+            <UserList
+              onUserSelect={handleUserSelect}
+              showPresence={true}
+              filter="all"
+              selectedUserId={targetUser?.id}
+            />
           </div>
-
-          <button
-            onClick={handleClearContext}
-            className="w-full px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700"
-          >
-            Clear Context
-          </button>
         </div>
 
-        <div className="mt-6 p-4 bg-white rounded-lg shadow-sm">
-          <h3 className="text-sm font-medium text-gray-700 mb-2">Current State</h3>
-          <div className="space-y-2 text-sm text-gray-600">
-            <p>Target: {targetUser?.username || 'Not set'}</p>
-            <p>Message ID: {messageId || 'None'}</p>
-            <p>Streaming: {isStreaming ? 'On' : 'Off'}</p>
+        {/* Fixed controls section */}
+        <div className="p-4 border-t bg-gray-50">
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium text-gray-700">Streaming Mode</span>
+              <button
+                onClick={handleToggleStreaming}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full ${
+                  isStreaming ? 'bg-indigo-600' : 'bg-gray-200'
+                }`}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition ${
+                    isStreaming ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+                />
+              </button>
+            </div>
+
+            <button
+              onClick={handleClearContext}
+              className="w-full px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700"
+            >
+              Clear Context
+            </button>
+
+            <div className="p-4 bg-white rounded-lg shadow-sm">
+              <h3 className="text-sm font-medium text-gray-700 mb-2">Current State</h3>
+              <div className="space-y-2 text-sm text-gray-600">
+                <p>Target: {targetUser?.username || 'Not set'}</p>
+                <p>Message ID: {messageId || 'None'}</p>
+                <p>Streaming: {isStreaming ? 'On' : 'Off'}</p>
+              </div>
+            </div>
           </div>
         </div>
       </div>
 
       {/* Chat Area */}
-      <div className="flex-1 flex flex-col">
+      <div className="flex-1 flex flex-col overflow-hidden">
         {targetUser ? (
-          <MessageList
-            channelId={targetUser.channelId}
-            chatType="dm"
-            chatName={targetUser.username}
-          />
+          <>
+            <div className="flex-1 overflow-y-auto">
+              <MessageList
+                channelId={targetUser.channelId}
+                chatType="dm"
+                chatName={targetUser.username}
+              />
+            </div>
+          </>
         ) : (
           <div className="flex-1 flex items-center justify-center text-gray-500">
             Select a target user to start chatting

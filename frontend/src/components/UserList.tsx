@@ -21,8 +21,6 @@ export function UserList({
   const [users, setUsers] = useState<User[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<Error | null>(null)
-  const [currentPage, setCurrentPage] = useState(1)
-  const usersPerPage = 8
   const { user: currentUser } = useAuth()
   const { getUser } = useUserCache()
 
@@ -109,28 +107,11 @@ export function UserList({
       })
   }, [users, filter])
 
-  // Get current page users
-  const currentUsers = useMemo(() => {
-    const indexOfLastUser = currentPage * usersPerPage
-    const indexOfFirstUser = indexOfLastUser - usersPerPage
-    return filteredUsers.slice(indexOfFirstUser, indexOfLastUser)
-  }, [filteredUsers, currentPage])
-
-  const totalPages = Math.ceil(filteredUsers.length / usersPerPage)
-
   const handleUserClick = useCallback((user: User) => {
     if (onUserSelect && user.id !== currentUser?.id) {
       onUserSelect(user)
     }
   }, [onUserSelect, currentUser])
-
-  const handlePrevPage = () => {
-    setCurrentPage(prev => Math.max(prev - 1, 1))
-  }
-
-  const handleNextPage = () => {
-    setCurrentPage(prev => Math.min(prev + 1, totalPages))
-  }
 
   if (loading) {
     return (
@@ -162,7 +143,7 @@ export function UserList({
   return (
     <div className="space-y-4">
       <div className="space-y-1">
-        {currentUsers.map(user => (
+        {filteredUsers.map(user => (
           <div
             key={user.id}
             onClick={() => handleUserClick(user)}
@@ -221,43 +202,6 @@ export function UserList({
           </div>
         ))}
       </div>
-
-      {/* Pagination Controls */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between pt-2 border-t border-gray-200 dark:border-gray-700">
-          <button
-            onClick={handlePrevPage}
-            disabled={currentPage === 1}
-            className={`
-              px-3 py-1.5 text-sm font-medium rounded-md
-              transition-colors duration-200
-              ${currentPage === 1 
-                ? 'bg-gray-100 text-gray-500 dark:bg-gray-800 cursor-not-allowed' 
-                : 'bg-indigo-600 text-white hover:bg-indigo-700 dark:bg-indigo-600 dark:hover:bg-indigo-700'}
-            `}
-            aria-label="Previous page"
-          >
-            Previous
-          </button>
-          <span className="text-sm font-medium text-gray-600 dark:text-gray-400">
-            Page {currentPage} of {totalPages}
-          </span>
-          <button
-            onClick={handleNextPage}
-            disabled={currentPage === totalPages}
-            className={`
-              px-3 py-1.5 text-sm font-medium rounded-md
-              transition-colors duration-200
-              ${currentPage === totalPages 
-                ? 'bg-gray-100 text-gray-500 dark:bg-gray-800 cursor-not-allowed' 
-                : 'bg-indigo-600 text-white hover:bg-indigo-700 dark:bg-indigo-600 dark:hover:bg-indigo-700'}
-            `}
-            aria-label="Next page"
-          >
-            Next
-          </button>
-        </div>
-      )}
     </div>
   )
 } 
