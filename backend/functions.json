@@ -1,0 +1,1218 @@
+[
+    {
+      "schema_name": "public",
+      "function_name": "array_to_halfvec",
+      "return_type": "halfvec",
+      "arguments": "double precision[], integer, boolean",
+      "owner": "supabase_admin",
+      "source_code": "array_to_halfvec"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "array_to_halfvec",
+      "return_type": "halfvec",
+      "arguments": "integer[], integer, boolean",
+      "owner": "supabase_admin",
+      "source_code": "array_to_halfvec"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "array_to_halfvec",
+      "return_type": "halfvec",
+      "arguments": "real[], integer, boolean",
+      "owner": "supabase_admin",
+      "source_code": "array_to_halfvec"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "array_to_halfvec",
+      "return_type": "halfvec",
+      "arguments": "numeric[], integer, boolean",
+      "owner": "supabase_admin",
+      "source_code": "array_to_halfvec"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "array_to_sparsevec",
+      "return_type": "sparsevec",
+      "arguments": "integer[], integer, boolean",
+      "owner": "supabase_admin",
+      "source_code": "array_to_sparsevec"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "array_to_sparsevec",
+      "return_type": "sparsevec",
+      "arguments": "numeric[], integer, boolean",
+      "owner": "supabase_admin",
+      "source_code": "array_to_sparsevec"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "array_to_sparsevec",
+      "return_type": "sparsevec",
+      "arguments": "real[], integer, boolean",
+      "owner": "supabase_admin",
+      "source_code": "array_to_sparsevec"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "array_to_sparsevec",
+      "return_type": "sparsevec",
+      "arguments": "double precision[], integer, boolean",
+      "owner": "supabase_admin",
+      "source_code": "array_to_sparsevec"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "array_to_vector",
+      "return_type": "vector",
+      "arguments": "arr double precision[]",
+      "owner": "postgres",
+      "source_code": "\nbegin\n    return arr::vector;\nend;\n"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "array_to_vector",
+      "return_type": "vector",
+      "arguments": "double precision[], integer, boolean",
+      "owner": "supabase_admin",
+      "source_code": "array_to_vector"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "array_to_vector",
+      "return_type": "vector",
+      "arguments": "real[], integer, boolean",
+      "owner": "supabase_admin",
+      "source_code": "array_to_vector"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "array_to_vector",
+      "return_type": "vector",
+      "arguments": "integer[], integer, boolean",
+      "owner": "supabase_admin",
+      "source_code": "array_to_vector"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "array_to_vector",
+      "return_type": "vector",
+      "arguments": "numeric[], integer, boolean",
+      "owner": "supabase_admin",
+      "source_code": "array_to_vector"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "authorize",
+      "return_type": "boolean",
+      "arguments": "requested_permission app_permission",
+      "owner": "postgres",
+      "source_code": "\ndeclare\n  bind_permissions int;\nbegin\n  select count(*)\n  from public.role_permissions\n  where role_permissions.permission = authorize.requested_permission\n    and role_permissions.role = (auth.jwt() ->> 'user_role')::public.app_role\n  into bind_permissions;\n  \n  return bind_permissions > 0;\nend;\n"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "avg",
+      "return_type": "halfvec",
+      "arguments": "halfvec",
+      "owner": "supabase_admin",
+      "source_code": "aggregate_dummy"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "avg",
+      "return_type": "vector",
+      "arguments": "vector",
+      "owner": "supabase_admin",
+      "source_code": "aggregate_dummy"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "binary_quantize",
+      "return_type": "bit",
+      "arguments": "vector",
+      "owner": "supabase_admin",
+      "source_code": "binary_quantize"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "binary_quantize",
+      "return_type": "bit",
+      "arguments": "halfvec",
+      "owner": "supabase_admin",
+      "source_code": "halfvec_binary_quantize"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "cosine_distance",
+      "return_type": "double precision",
+      "arguments": "vector, vector",
+      "owner": "supabase_admin",
+      "source_code": "cosine_distance"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "cosine_distance",
+      "return_type": "double precision",
+      "arguments": "halfvec, halfvec",
+      "owner": "supabase_admin",
+      "source_code": "halfvec_cosine_distance"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "cosine_distance",
+      "return_type": "double precision",
+      "arguments": "sparsevec, sparsevec",
+      "owner": "supabase_admin",
+      "source_code": "sparsevec_cosine_distance"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "create_channel_with_member",
+      "return_type": "uuid",
+      "arguments": "p_slug text, p_user_id uuid",
+      "owner": "postgres",
+      "source_code": "\nDECLARE\n    v_channel_id UUID;\n    v_profile_id UUID;\nBEGIN\n    -- First ensure user has a profile\n    INSERT INTO public.profiles (id, username, full_name)\n    SELECT id, email, COALESCE(raw_user_meta_data->>'full_name', email)\n    FROM auth.users\n    WHERE id = p_user_id\n    ON CONFLICT (id) DO NOTHING;\n\n    -- Get profile ID\n    SELECT id INTO v_profile_id FROM public.profiles WHERE id = p_user_id;\n    \n    IF v_profile_id IS NULL THEN\n        RAISE EXCEPTION 'User profile not found';\n    END IF;\n\n    -- Create channel\n    INSERT INTO public.channels (slug, created_by)\n    VALUES (p_slug, p_user_id)\n    RETURNING id INTO v_channel_id;\n\n    -- Add creator as channel member\n    INSERT INTO public.channel_members (channel_id, user_id, profile_id, role)\n    VALUES (v_channel_id, p_user_id, v_profile_id, 'admin');\n\n    RETURN v_channel_id;\nEND;\n"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "custom_access_token_hook",
+      "return_type": "jsonb",
+      "arguments": "event jsonb",
+      "owner": "postgres",
+      "source_code": "\n  declare\n    claims jsonb;\n    user_role public.app_role;\n  begin\n    -- Check if the user is marked as admin in the profiles table\n    select role into user_role from public.user_roles where user_id = (event->>'user_id')::uuid;\n\n    claims := event->'claims';\n\n    if user_role is not null then\n      -- Set the claim\n      claims := jsonb_set(claims, '{user_role}', to_jsonb(user_role));\n    else \n      claims := jsonb_set(claims, '{user_role}', 'null');\n    end if;\n\n    -- Update the 'claims' object in the original event\n    event := jsonb_set(event, '{claims}', claims);\n\n    -- Return the modified or original event\n    return event;\n  end;\n"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "delete_dm_channel",
+      "return_type": "void",
+      "arguments": "p_channel_id uuid, p_user_id uuid",
+      "owner": "postgres",
+      "source_code": "\nBEGIN\n  -- Verify the user is the authenticated user\n  IF p_user_id != auth.uid() THEN\n    RAISE EXCEPTION 'Not authorized';\n  END IF;\n\n  -- Verify the user is a member of the channel\n  IF NOT EXISTS (\n    SELECT 1 FROM dm_channel_members\n    WHERE channel_id = p_channel_id\n    AND user_id = p_user_id\n  ) THEN\n    RAISE EXCEPTION 'User is not a member of this channel';\n  END IF;\n\n  -- Delete all messages first (due to foreign key constraints)\n  DELETE FROM direct_messages\n  WHERE channel_id = p_channel_id;\n\n  -- Delete all members\n  DELETE FROM dm_channel_members\n  WHERE channel_id = p_channel_id;\n\n  -- Finally delete the channel\n  DELETE FROM direct_message_channels\n  WHERE id = p_channel_id;\nEND;\n"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "direct_messages_trigger",
+      "return_type": "trigger",
+      "arguments": "",
+      "owner": "postgres",
+      "source_code": "\nBEGIN\n    -- Set created_at if not provided\n    IF NEW.created_at IS NULL THEN\n        NEW.created_at := now();\n    END IF;\n\n    -- Set updated_at to current timestamp\n    NEW.updated_at := now();\n\n    -- Initialize attachments array if null\n    IF NEW.attachments IS NULL THEN\n        NEW.attachments := '[]'::jsonb;\n    END IF;\n\n    RETURN NEW;\nEND;\n"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "ensure_dm_channel_exists",
+      "return_type": "uuid",
+      "arguments": "channel_uuid uuid",
+      "owner": "postgres",
+      "source_code": "\nBEGIN\n    INSERT INTO public.direct_message_channels (id, created_at, updated_at)\n    VALUES (channel_uuid, NOW(), NOW())\n    ON CONFLICT (id) DO NOTHING;\n    \n    RETURN channel_uuid;\nEND;\n"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "ensure_dm_membership_exists",
+      "return_type": "uuid",
+      "arguments": "p_channel_id uuid, p_user_id uuid, p_profile_id uuid",
+      "owner": "postgres",
+      "source_code": "\nDECLARE\n    v_membership_id UUID;\nBEGIN\n    -- First ensure the channel exists\n    PERFORM ensure_dm_channel_exists(p_channel_id);\n    \n    -- Then try to create the membership\n    INSERT INTO public.direct_message_members (\n        channel_id,\n        user_id,\n        profile_id,\n        last_read_at,\n        created_at\n    )\n    VALUES (\n        p_channel_id,\n        p_user_id,\n        p_profile_id,\n        NOW(),\n        NOW()\n    )\n    ON CONFLICT (channel_id, user_id) \n    DO UPDATE SET last_read_at = NOW()\n    RETURNING id INTO v_membership_id;\n    \n    RETURN v_membership_id;\nEND;\n"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "find_or_create_dm_channel",
+      "return_type": "uuid",
+      "arguments": "p_user_id uuid, p_other_user_id uuid",
+      "owner": "postgres",
+      "source_code": "\nDECLARE\n  v_channel_id uuid;\nBEGIN\n  -- Verify the user is the authenticated user\n  IF p_user_id != auth.uid() THEN\n    RAISE EXCEPTION 'Not authorized';\n  END IF;\n\n  -- First try to find an existing channel\n  SELECT DISTINCT dm1.channel_id INTO v_channel_id\n  FROM dm_channel_members dm1\n  JOIN dm_channel_members dm2 ON dm1.channel_id = dm2.channel_id\n  WHERE (dm1.user_id = p_user_id AND dm2.user_id = p_other_user_id)\n     OR (dm1.user_id = p_other_user_id AND dm2.user_id = p_user_id)\n  LIMIT 1;\n\n  -- If no channel exists, create one\n  IF v_channel_id IS NULL THEN\n    -- Create the channel\n    INSERT INTO direct_message_channels (created_at, updated_at)\n    VALUES (NOW(), NOW())\n    RETURNING id INTO v_channel_id;\n\n    -- Add both users to the channel\n    INSERT INTO dm_channel_members (channel_id, user_id, created_at)\n    VALUES \n      (v_channel_id, p_user_id, NOW()),\n      (v_channel_id, p_other_user_id, NOW());\n  END IF;\n\n  RETURN v_channel_id;\nEND;\n"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "get_active_profile",
+      "return_type": "uuid",
+      "arguments": "p_user_id uuid",
+      "owner": "postgres",
+      "source_code": "\n  SELECT id FROM profiles\n  WHERE id IN (\n    SELECT profile_id FROM channel_members WHERE user_id = p_user_id\n    UNION\n    SELECT profile_id FROM direct_message_members WHERE user_id = p_user_id\n  )\n  ORDER BY created_at DESC\n  LIMIT 1;\n"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "get_dm_channels_for_user",
+      "return_type": "TABLE(channel_id uuid, other_user_id uuid, other_profile_id uuid, other_username text, other_full_name text, other_avatar_url text, last_read_at timestamp with time zone, last_message_at timestamp with time zone, last_message_content text, unread_count bigint)",
+      "arguments": "user_uuid uuid",
+      "owner": "postgres",
+      "source_code": "\nBEGIN\n    -- Verify the user exists\n    IF NOT EXISTS (SELECT 1 FROM auth.users WHERE id = user_uuid) THEN\n        RAISE EXCEPTION 'User not found';\n    END IF;\n\n    RETURN QUERY\n    WITH latest_messages AS (\n        SELECT DISTINCT ON (dm.channel_id)\n            dm.channel_id,\n            dm.created_at as last_message_at,\n            dm.content as last_message_content\n        FROM direct_messages dm\n        ORDER BY dm.channel_id, dm.created_at DESC\n    ),\n    unread_messages AS (\n        SELECT \n            dm.channel_id,\n            COUNT(*) as unread_count\n        FROM direct_messages dm\n        JOIN dm_channel_members dmm ON dmm.channel_id = dm.channel_id\n        WHERE dmm.user_id = user_uuid\n        AND (dmm.last_read_at IS NULL OR dm.created_at > dmm.last_read_at)\n        GROUP BY dm.channel_id\n    )\n    SELECT DISTINCT\n        dmm.channel_id,\n        other_member.user_id as other_user_id,\n        other_member.user_id as other_profile_id,\n        p.username as other_username,\n        p.full_name as other_full_name,\n        p.avatar_url as other_avatar_url,\n        dmm.last_read_at,\n        COALESCE(lm.last_message_at, dmm.created_at) as last_message_at,\n        lm.last_message_content,\n        COALESCE(um.unread_count, 0) as unread_count\n    FROM dm_channel_members dmm\n    -- Get the other member of each channel\n    JOIN dm_channel_members other_member ON \n        other_member.channel_id = dmm.channel_id AND \n        other_member.user_id != user_uuid\n    -- Get the other member's profile information\n    JOIN profiles p ON p.id = other_member.user_id\n    -- Get the latest message for each channel\n    LEFT JOIN latest_messages lm ON lm.channel_id = dmm.channel_id\n    -- Get unread count for each channel\n    LEFT JOIN unread_messages um ON um.channel_id = dmm.channel_id\n    -- Only get channels where the user is a member\n    WHERE dmm.user_id = user_uuid\n    ORDER BY COALESCE(lm.last_message_at, dmm.created_at) DESC NULLS LAST;\nEND;\n"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "get_dm_messages",
+      "return_type": "SETOF direct_messages",
+      "arguments": "p_channel_id uuid, p_user_id uuid, p_limit integer DEFAULT 50, p_before_timestamp timestamp with time zone DEFAULT NULL::timestamp with time zone",
+      "owner": "postgres",
+      "source_code": "\nBEGIN\n  -- Verify the user is the authenticated user\n  IF p_user_id != auth.uid() THEN\n    RAISE EXCEPTION 'Not authorized';\n  END IF;\n\n  -- Verify the user is a member of the channel\n  IF NOT EXISTS (\n    SELECT 1 FROM dm_channel_members\n    WHERE channel_id = p_channel_id\n    AND user_id = p_user_id\n  ) THEN\n    RAISE EXCEPTION 'User is not a member of this channel';\n  END IF;\n\n  -- Return messages\n  RETURN QUERY\n  SELECT *\n  FROM direct_messages\n  WHERE channel_id = p_channel_id\n  AND (p_before_timestamp IS NULL OR created_at < p_before_timestamp)\n  ORDER BY created_at DESC\n  LIMIT p_limit;\nEND;\n"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "get_dm_messages_with_profiles",
+      "return_type": "TABLE(id uuid, channel_id uuid, user_id uuid, profile_id uuid, content text, created_at timestamp with time zone, updated_at timestamp with time zone, username text, full_name text, avatar_url text)",
+      "arguments": "p_channel_id uuid, p_user_id uuid, p_limit integer DEFAULT 50, p_before_timestamp timestamp with time zone DEFAULT NULL::timestamp with time zone",
+      "owner": "postgres",
+      "source_code": "\nBEGIN\n  -- Verify the user is the authenticated user\n  IF p_user_id != auth.uid() THEN\n    RAISE EXCEPTION 'Not authorized';\n  END IF;\n\n  -- Verify the user is a member of the channel\n  IF NOT EXISTS (\n    SELECT 1 FROM dm_channel_members\n    WHERE channel_id = p_channel_id\n    AND user_id = p_user_id\n  ) THEN\n    RAISE EXCEPTION 'User is not a member of this channel';\n  END IF;\n\n  -- Return messages with user profiles\n  RETURN QUERY\n  SELECT \n    m.id,\n    m.channel_id,\n    m.user_id,\n    m.profile_id,\n    m.content,\n    m.created_at,\n    m.updated_at,\n    p.username,\n    p.full_name,\n    p.avatar_url\n  FROM direct_messages m\n  JOIN profiles p ON p.id = m.profile_id\n  WHERE m.channel_id = p_channel_id\n  AND (p_before_timestamp IS NULL OR m.created_at < p_before_timestamp)\n  ORDER BY m.created_at DESC\n  LIMIT p_limit;\nEND;\n"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "get_dm_unread_count",
+      "return_type": "bigint",
+      "arguments": "channel_id uuid, user_id uuid",
+      "owner": "postgres",
+      "source_code": "\n    SELECT COUNT(*)\n    FROM direct_messages m\n    JOIN direct_message_members dmm ON dmm.channel_id = m.channel_id\n    WHERE m.channel_id = $1\n    AND dmm.user_id = $2\n    AND m.created_at > dmm.last_read_at;\n"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "get_unread_counts",
+      "return_type": "TABLE(channel_id uuid, unread_count bigint)",
+      "arguments": "p_user_id uuid",
+      "owner": "postgres",
+      "source_code": "\nBEGIN\n  RETURN QUERY\n  -- Channel messages\n  SELECT \n    m.channel_id,\n    COUNT(m.id)::bigint as unread_count\n  FROM messages m\n  JOIN channel_members cm ON cm.channel_id = m.channel_id\n  WHERE cm.user_id = p_user_id\n  AND m.inserted_at > cm.inserted_at\n  GROUP BY m.channel_id\n  UNION ALL\n  -- Direct messages\n  SELECT \n    dm.channel_id,\n    COUNT(dm.id)::bigint as unread_count\n  FROM direct_messages dm\n  JOIN direct_message_members dmm ON dmm.channel_id = dm.channel_id\n  WHERE dmm.user_id = p_user_id\n  AND dm.created_at > COALESCE(dmm.last_read_at, dmm.created_at)\n  GROUP BY dm.channel_id;\nEND;\n"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "get_user_channels",
+      "return_type": "TABLE(channel_id uuid, channel_type text, latest_message_at timestamp with time zone, unread_count bigint)",
+      "arguments": "user_id uuid",
+      "owner": "postgres",
+      "source_code": "\nBEGIN\n    RETURN QUERY\n    SELECT \n        dma.channel_id,\n        'dm'::text as channel_type,\n        MAX(dm.created_at) as latest_message_at,\n        COUNT(dm.id) FILTER (WHERE dm.created_at > dmm.last_read_at) as unread_count\n    FROM dm_channel_access dma\n    JOIN dm_channel_members dmm ON dmm.channel_id = dma.channel_id\n    LEFT JOIN direct_messages dm ON dm.channel_id = dma.channel_id\n    WHERE dma.user_id = $1\n    GROUP BY dma.channel_id;\nEND;\n"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "halfvec",
+      "return_type": "halfvec",
+      "arguments": "halfvec, integer, boolean",
+      "owner": "supabase_admin",
+      "source_code": "halfvec"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "halfvec_accum",
+      "return_type": "double precision[]",
+      "arguments": "double precision[], halfvec",
+      "owner": "supabase_admin",
+      "source_code": "halfvec_accum"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "halfvec_add",
+      "return_type": "halfvec",
+      "arguments": "halfvec, halfvec",
+      "owner": "supabase_admin",
+      "source_code": "halfvec_add"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "halfvec_avg",
+      "return_type": "halfvec",
+      "arguments": "double precision[]",
+      "owner": "supabase_admin",
+      "source_code": "halfvec_avg"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "halfvec_cmp",
+      "return_type": "integer",
+      "arguments": "halfvec, halfvec",
+      "owner": "supabase_admin",
+      "source_code": "halfvec_cmp"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "halfvec_combine",
+      "return_type": "double precision[]",
+      "arguments": "double precision[], double precision[]",
+      "owner": "supabase_admin",
+      "source_code": "vector_combine"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "halfvec_concat",
+      "return_type": "halfvec",
+      "arguments": "halfvec, halfvec",
+      "owner": "supabase_admin",
+      "source_code": "halfvec_concat"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "halfvec_eq",
+      "return_type": "boolean",
+      "arguments": "halfvec, halfvec",
+      "owner": "supabase_admin",
+      "source_code": "halfvec_eq"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "halfvec_ge",
+      "return_type": "boolean",
+      "arguments": "halfvec, halfvec",
+      "owner": "supabase_admin",
+      "source_code": "halfvec_ge"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "halfvec_gt",
+      "return_type": "boolean",
+      "arguments": "halfvec, halfvec",
+      "owner": "supabase_admin",
+      "source_code": "halfvec_gt"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "halfvec_in",
+      "return_type": "halfvec",
+      "arguments": "cstring, oid, integer",
+      "owner": "supabase_admin",
+      "source_code": "halfvec_in"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "halfvec_l2_squared_distance",
+      "return_type": "double precision",
+      "arguments": "halfvec, halfvec",
+      "owner": "supabase_admin",
+      "source_code": "halfvec_l2_squared_distance"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "halfvec_le",
+      "return_type": "boolean",
+      "arguments": "halfvec, halfvec",
+      "owner": "supabase_admin",
+      "source_code": "halfvec_le"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "halfvec_lt",
+      "return_type": "boolean",
+      "arguments": "halfvec, halfvec",
+      "owner": "supabase_admin",
+      "source_code": "halfvec_lt"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "halfvec_mul",
+      "return_type": "halfvec",
+      "arguments": "halfvec, halfvec",
+      "owner": "supabase_admin",
+      "source_code": "halfvec_mul"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "halfvec_ne",
+      "return_type": "boolean",
+      "arguments": "halfvec, halfvec",
+      "owner": "supabase_admin",
+      "source_code": "halfvec_ne"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "halfvec_negative_inner_product",
+      "return_type": "double precision",
+      "arguments": "halfvec, halfvec",
+      "owner": "supabase_admin",
+      "source_code": "halfvec_negative_inner_product"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "halfvec_out",
+      "return_type": "cstring",
+      "arguments": "halfvec",
+      "owner": "supabase_admin",
+      "source_code": "halfvec_out"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "halfvec_recv",
+      "return_type": "halfvec",
+      "arguments": "internal, oid, integer",
+      "owner": "supabase_admin",
+      "source_code": "halfvec_recv"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "halfvec_send",
+      "return_type": "bytea",
+      "arguments": "halfvec",
+      "owner": "supabase_admin",
+      "source_code": "halfvec_send"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "halfvec_spherical_distance",
+      "return_type": "double precision",
+      "arguments": "halfvec, halfvec",
+      "owner": "supabase_admin",
+      "source_code": "halfvec_spherical_distance"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "halfvec_sub",
+      "return_type": "halfvec",
+      "arguments": "halfvec, halfvec",
+      "owner": "supabase_admin",
+      "source_code": "halfvec_sub"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "halfvec_to_float4",
+      "return_type": "real[]",
+      "arguments": "halfvec, integer, boolean",
+      "owner": "supabase_admin",
+      "source_code": "halfvec_to_float4"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "halfvec_to_sparsevec",
+      "return_type": "sparsevec",
+      "arguments": "halfvec, integer, boolean",
+      "owner": "supabase_admin",
+      "source_code": "halfvec_to_sparsevec"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "halfvec_to_vector",
+      "return_type": "vector",
+      "arguments": "halfvec, integer, boolean",
+      "owner": "supabase_admin",
+      "source_code": "halfvec_to_vector"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "halfvec_typmod_in",
+      "return_type": "integer",
+      "arguments": "cstring[]",
+      "owner": "supabase_admin",
+      "source_code": "halfvec_typmod_in"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "hamming_distance",
+      "return_type": "double precision",
+      "arguments": "bit, bit",
+      "owner": "supabase_admin",
+      "source_code": "hamming_distance"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "handle_new_user",
+      "return_type": "trigger",
+      "arguments": "",
+      "owner": "postgres",
+      "source_code": "\nBEGIN\n  INSERT INTO public.profiles (id, username, full_name)\n  VALUES (\n    new.id,\n    COALESCE(new.raw_user_meta_data->>'username', 'user_' || substr(new.id::text, 1, 8)),\n    COALESCE(NULLIF(new.raw_user_meta_data->>'full_name', ''), 'n/a')\n  );\n  RETURN new;\nEND;\n"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "hnsw_bit_support",
+      "return_type": "internal",
+      "arguments": "internal",
+      "owner": "supabase_admin",
+      "source_code": "hnsw_bit_support"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "hnsw_halfvec_support",
+      "return_type": "internal",
+      "arguments": "internal",
+      "owner": "supabase_admin",
+      "source_code": "hnsw_halfvec_support"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "hnsw_sparsevec_support",
+      "return_type": "internal",
+      "arguments": "internal",
+      "owner": "supabase_admin",
+      "source_code": "hnsw_sparsevec_support"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "hnswhandler",
+      "return_type": "index_am_handler",
+      "arguments": "internal",
+      "owner": "supabase_admin",
+      "source_code": "hnswhandler"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "inner_product",
+      "return_type": "double precision",
+      "arguments": "vector, vector",
+      "owner": "supabase_admin",
+      "source_code": "inner_product"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "inner_product",
+      "return_type": "double precision",
+      "arguments": "sparsevec, sparsevec",
+      "owner": "supabase_admin",
+      "source_code": "sparsevec_inner_product"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "inner_product",
+      "return_type": "double precision",
+      "arguments": "halfvec, halfvec",
+      "owner": "supabase_admin",
+      "source_code": "halfvec_inner_product"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "insert_direct_message_member",
+      "return_type": "uuid",
+      "arguments": "p_channel_id uuid, p_user_id uuid, p_profile_id uuid, p_last_read_at timestamp with time zone DEFAULT now()",
+      "owner": "postgres",
+      "source_code": "\nDECLARE\n    new_member_id uuid;\nBEGIN\n    -- Check if user has access\n    IF p_user_id != auth.uid() THEN\n        RAISE EXCEPTION 'Not authorized';\n    END IF;\n\n    -- Insert into dm_channel_members first\n    INSERT INTO public.dm_channel_members (channel_id, user_id, last_read_at)\n    VALUES (p_channel_id, p_user_id, p_last_read_at)\n    RETURNING id INTO new_member_id;\n\n    -- Then insert into dm_member_profiles\n    INSERT INTO public.dm_member_profiles (member_id, profile_id)\n    VALUES (new_member_id, p_profile_id);\n\n    RETURN new_member_id;\nEND;\n"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "insert_direct_message_members",
+      "return_type": "trigger",
+      "arguments": "",
+      "owner": "postgres",
+      "source_code": "\nBEGIN\n  -- Insert into dm_channel_members\n  WITH inserted_member AS (\n    INSERT INTO dm_channel_members (channel_id, user_id, last_read_at, created_at)\n    VALUES (NEW.channel_id, NEW.user_id, COALESCE(NEW.last_read_at, NOW()), COALESCE(NEW.created_at, NOW()))\n    RETURNING id\n  )\n  -- No need to insert into dm_member_profiles since we're using user_id as profile_id\n  SELECT id FROM inserted_member INTO NEW.id;\n  \n  RETURN NEW;\nEND;\n"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "is_dm_channel_member",
+      "return_type": "boolean",
+      "arguments": "channel_uuid uuid, user_uuid uuid",
+      "owner": "postgres",
+      "source_code": "\nBEGIN\n    RETURN EXISTS (\n        SELECT 1 FROM public.direct_message_members\n        WHERE channel_id = channel_uuid AND user_id = user_uuid\n    );\nEND;\n"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "ivfflat_bit_support",
+      "return_type": "internal",
+      "arguments": "internal",
+      "owner": "supabase_admin",
+      "source_code": "ivfflat_bit_support"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "ivfflat_halfvec_support",
+      "return_type": "internal",
+      "arguments": "internal",
+      "owner": "supabase_admin",
+      "source_code": "ivfflat_halfvec_support"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "ivfflathandler",
+      "return_type": "index_am_handler",
+      "arguments": "internal",
+      "owner": "supabase_admin",
+      "source_code": "ivfflathandler"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "jaccard_distance",
+      "return_type": "double precision",
+      "arguments": "bit, bit",
+      "owner": "supabase_admin",
+      "source_code": "jaccard_distance"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "l1_distance",
+      "return_type": "double precision",
+      "arguments": "vector, vector",
+      "owner": "supabase_admin",
+      "source_code": "l1_distance"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "l1_distance",
+      "return_type": "double precision",
+      "arguments": "sparsevec, sparsevec",
+      "owner": "supabase_admin",
+      "source_code": "sparsevec_l1_distance"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "l1_distance",
+      "return_type": "double precision",
+      "arguments": "halfvec, halfvec",
+      "owner": "supabase_admin",
+      "source_code": "halfvec_l1_distance"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "l2_distance",
+      "return_type": "double precision",
+      "arguments": "halfvec, halfvec",
+      "owner": "supabase_admin",
+      "source_code": "halfvec_l2_distance"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "l2_distance",
+      "return_type": "double precision",
+      "arguments": "vector, vector",
+      "owner": "supabase_admin",
+      "source_code": "l2_distance"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "l2_distance",
+      "return_type": "double precision",
+      "arguments": "sparsevec, sparsevec",
+      "owner": "supabase_admin",
+      "source_code": "sparsevec_l2_distance"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "l2_norm",
+      "return_type": "double precision",
+      "arguments": "sparsevec",
+      "owner": "supabase_admin",
+      "source_code": "sparsevec_l2_norm"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "l2_norm",
+      "return_type": "double precision",
+      "arguments": "halfvec",
+      "owner": "supabase_admin",
+      "source_code": "halfvec_l2_norm"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "l2_normalize",
+      "return_type": "halfvec",
+      "arguments": "halfvec",
+      "owner": "supabase_admin",
+      "source_code": "halfvec_l2_normalize"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "l2_normalize",
+      "return_type": "sparsevec",
+      "arguments": "sparsevec",
+      "owner": "supabase_admin",
+      "source_code": "sparsevec_l2_normalize"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "l2_normalize",
+      "return_type": "vector",
+      "arguments": "vector",
+      "owner": "supabase_admin",
+      "source_code": "l2_normalize"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "mark_dm_as_read",
+      "return_type": "void",
+      "arguments": "p_channel_id uuid",
+      "owner": "postgres",
+      "source_code": "\nBEGIN\n  UPDATE direct_message_members\n  SET last_read_at = now()\n  WHERE channel_id = p_channel_id\n  AND user_id = auth.uid();\nEND;\n"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "messages_trigger",
+      "return_type": "trigger",
+      "arguments": "",
+      "owner": "postgres",
+      "source_code": "\nBEGIN\n    -- Set created_at if not provided\n    IF NEW.created_at IS NULL THEN\n        NEW.created_at := now();\n    END IF;\n\n    -- Set updated_at to current timestamp\n    NEW.updated_at := now();\n\n    -- Initialize attachments array if null\n    IF NEW.attachments IS NULL THEN\n        NEW.attachments := '[]'::jsonb;\n    END IF;\n\n    RETURN NEW;\nEND;\n"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "refresh_dm_access",
+      "return_type": "trigger",
+      "arguments": "",
+      "owner": "postgres",
+      "source_code": "\nBEGIN\n    REFRESH MATERIALIZED VIEW CONCURRENTLY dm_channel_access;\n    RETURN NULL;\nEND;\n"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "refresh_dm_channel_access",
+      "return_type": "void",
+      "arguments": "",
+      "owner": "postgres",
+      "source_code": "\nBEGIN\n  REFRESH MATERIALIZED VIEW CONCURRENTLY dm_channel_access;\nEND;\n"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "refresh_dm_member_profiles",
+      "return_type": "trigger",
+      "arguments": "",
+      "owner": "postgres",
+      "source_code": "\nBEGIN\n    REFRESH MATERIALIZED VIEW CONCURRENTLY public.dm_member_profiles;\n    RETURN NULL;\nEND;\n"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "refresh_dm_memberships",
+      "return_type": "trigger",
+      "arguments": "",
+      "owner": "postgres",
+      "source_code": "\nBEGIN\n    REFRESH MATERIALIZED VIEW CONCURRENTLY public.dm_channel_memberships;\n    RETURN NULL;\nEND;\n"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "search_similar_messages",
+      "return_type": "TABLE(chunk_id uuid, message_id uuid, dm_message_id uuid, content text, similarity double precision)",
+      "arguments": "query_embedding vector, match_threshold double precision, match_count integer",
+      "owner": "postgres",
+      "source_code": "\n    select\n        c.id as chunk_id,\n        c.message_id,\n        c.dm_message_id,\n        c.chunk_content as content,\n        1 - (e.embedding_vector <=> query_embedding) as similarity\n    from message_embeddings e\n    join message_chunks c on c.id = e.chunk_id\n    where 1 - (e.embedding_vector <=> query_embedding) > match_threshold\n    order by e.embedding_vector <=> query_embedding\n    limit match_count;\n"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "send_direct_message",
+      "return_type": "direct_messages",
+      "arguments": "p_channel_id uuid, p_user_id uuid, p_profile_id uuid, p_content text",
+      "owner": "postgres",
+      "source_code": "\nDECLARE\n  v_message direct_messages;\nBEGIN\n  -- Verify the user is the authenticated user\n  IF p_user_id != auth.uid() THEN\n    RAISE EXCEPTION 'Not authorized';\n  END IF;\n\n  -- Verify the user is a member of the channel\n  IF NOT EXISTS (\n    SELECT 1 FROM dm_channel_members\n    WHERE channel_id = p_channel_id\n    AND user_id = p_user_id\n  ) THEN\n    RAISE EXCEPTION 'User is not a member of this channel';\n  END IF;\n\n  -- Insert the message\n  INSERT INTO direct_messages (\n    channel_id,\n    user_id,\n    profile_id,\n    content,\n    created_at,\n    updated_at\n  ) VALUES (\n    p_channel_id,\n    p_user_id,\n    p_profile_id,\n    p_content,\n    NOW(),\n    NOW()\n  )\n  RETURNING * INTO v_message;\n\n  -- Update channel timestamp\n  UPDATE direct_message_channels\n  SET updated_at = NOW()\n  WHERE id = p_channel_id;\n\n  RETURN v_message;\nEND;\n"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "sparsevec",
+      "return_type": "sparsevec",
+      "arguments": "sparsevec, integer, boolean",
+      "owner": "supabase_admin",
+      "source_code": "sparsevec"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "sparsevec_cmp",
+      "return_type": "integer",
+      "arguments": "sparsevec, sparsevec",
+      "owner": "supabase_admin",
+      "source_code": "sparsevec_cmp"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "sparsevec_eq",
+      "return_type": "boolean",
+      "arguments": "sparsevec, sparsevec",
+      "owner": "supabase_admin",
+      "source_code": "sparsevec_eq"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "sparsevec_ge",
+      "return_type": "boolean",
+      "arguments": "sparsevec, sparsevec",
+      "owner": "supabase_admin",
+      "source_code": "sparsevec_ge"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "sparsevec_gt",
+      "return_type": "boolean",
+      "arguments": "sparsevec, sparsevec",
+      "owner": "supabase_admin",
+      "source_code": "sparsevec_gt"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "sparsevec_in",
+      "return_type": "sparsevec",
+      "arguments": "cstring, oid, integer",
+      "owner": "supabase_admin",
+      "source_code": "sparsevec_in"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "sparsevec_l2_squared_distance",
+      "return_type": "double precision",
+      "arguments": "sparsevec, sparsevec",
+      "owner": "supabase_admin",
+      "source_code": "sparsevec_l2_squared_distance"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "sparsevec_le",
+      "return_type": "boolean",
+      "arguments": "sparsevec, sparsevec",
+      "owner": "supabase_admin",
+      "source_code": "sparsevec_le"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "sparsevec_lt",
+      "return_type": "boolean",
+      "arguments": "sparsevec, sparsevec",
+      "owner": "supabase_admin",
+      "source_code": "sparsevec_lt"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "sparsevec_ne",
+      "return_type": "boolean",
+      "arguments": "sparsevec, sparsevec",
+      "owner": "supabase_admin",
+      "source_code": "sparsevec_ne"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "sparsevec_negative_inner_product",
+      "return_type": "double precision",
+      "arguments": "sparsevec, sparsevec",
+      "owner": "supabase_admin",
+      "source_code": "sparsevec_negative_inner_product"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "sparsevec_out",
+      "return_type": "cstring",
+      "arguments": "sparsevec",
+      "owner": "supabase_admin",
+      "source_code": "sparsevec_out"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "sparsevec_recv",
+      "return_type": "sparsevec",
+      "arguments": "internal, oid, integer",
+      "owner": "supabase_admin",
+      "source_code": "sparsevec_recv"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "sparsevec_send",
+      "return_type": "bytea",
+      "arguments": "sparsevec",
+      "owner": "supabase_admin",
+      "source_code": "sparsevec_send"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "sparsevec_to_halfvec",
+      "return_type": "halfvec",
+      "arguments": "sparsevec, integer, boolean",
+      "owner": "supabase_admin",
+      "source_code": "sparsevec_to_halfvec"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "sparsevec_to_vector",
+      "return_type": "vector",
+      "arguments": "sparsevec, integer, boolean",
+      "owner": "supabase_admin",
+      "source_code": "sparsevec_to_vector"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "sparsevec_typmod_in",
+      "return_type": "integer",
+      "arguments": "cstring[]",
+      "owner": "supabase_admin",
+      "source_code": "sparsevec_typmod_in"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "subvector",
+      "return_type": "halfvec",
+      "arguments": "halfvec, integer, integer",
+      "owner": "supabase_admin",
+      "source_code": "halfvec_subvector"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "subvector",
+      "return_type": "vector",
+      "arguments": "vector, integer, integer",
+      "owner": "supabase_admin",
+      "source_code": "subvector"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "sum",
+      "return_type": "vector",
+      "arguments": "vector",
+      "owner": "supabase_admin",
+      "source_code": "aggregate_dummy"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "sum",
+      "return_type": "halfvec",
+      "arguments": "halfvec",
+      "owner": "supabase_admin",
+      "source_code": "aggregate_dummy"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "update_dm_channel_timestamp",
+      "return_type": "trigger",
+      "arguments": "",
+      "owner": "postgres",
+      "source_code": "\nBEGIN\n  UPDATE direct_message_channels\n  SET updated_at = NOW()\n  WHERE id = NEW.channel_id;\n  RETURN NEW;\nEND;\n"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "update_dm_last_read",
+      "return_type": "timestamp with time zone",
+      "arguments": "p_channel_id uuid, p_user_id uuid",
+      "owner": "postgres",
+      "source_code": "\nDECLARE\n    v_timestamp timestamp with time zone;\nBEGIN\n    -- Update the last_read_at timestamp\n    UPDATE direct_message_members\n    SET last_read_at = now()\n    WHERE channel_id = p_channel_id\n    AND user_id = p_user_id\n    RETURNING last_read_at INTO v_timestamp;\n\n    -- If no row was updated, the user is not a member of this channel\n    IF NOT FOUND THEN\n        RAISE EXCEPTION 'User % is not a member of channel %', p_user_id, p_channel_id;\n    END IF;\n\n    RETURN v_timestamp;\nEND;\n"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "update_dm_with_attachment",
+      "return_type": "TABLE(id uuid, channel_id uuid, user_id uuid, profile_id uuid, content text, attachments jsonb, created_at timestamp with time zone, updated_at timestamp with time zone)",
+      "arguments": "p_message_id uuid, p_attachments jsonb",
+      "owner": "postgres",
+      "source_code": "\nBEGIN\n    RETURN QUERY\n    UPDATE direct_messages dm\n    SET \n        attachments = p_attachments,\n        updated_at = NOW()\n    WHERE dm.id = p_message_id\n    RETURNING \n        dm.id,\n        dm.channel_id,\n        dm.user_id,\n        dm.profile_id,\n        dm.content,\n        dm.attachments,\n        dm.created_at,\n        dm.updated_at;\nEND;\n"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "update_message_with_attachment",
+      "return_type": "TABLE(id uuid, channel_id uuid, user_id uuid, content text, attachments jsonb, inserted_at timestamp with time zone, updated_at timestamp with time zone)",
+      "arguments": "p_message_id uuid, p_attachments jsonb",
+      "owner": "postgres",
+      "source_code": "\nBEGIN\n    RETURN QUERY\n    UPDATE messages m\n    SET \n        attachments = p_attachments,\n        updated_at = NOW()\n    WHERE m.id = p_message_id\n    RETURNING \n        m.id,\n        m.channel_id,\n        m.user_id,\n        m.content,\n        m.attachments,\n        m.inserted_at,\n        m.updated_at;\nEND;\n"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "update_updated_at_column",
+      "return_type": "trigger",
+      "arguments": "",
+      "owner": "postgres",
+      "source_code": "\nBEGIN\n  NEW.updated_at = TIMEZONE('utc'::text, NOW());\n  RETURN NEW;\nEND;\n"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "update_user_status",
+      "return_type": "void",
+      "arguments": "p_user_id uuid, p_status text",
+      "owner": "postgres",
+      "source_code": "\nBEGIN\n    -- Verify the user is updating their own status\n    IF auth.uid() != p_user_id THEN\n        RAISE EXCEPTION 'Users can only update their own status';\n    END IF;\n\n    -- Update the status in profiles table\n    UPDATE public.profiles \n    SET \n        status = p_status,\n        last_seen = now(),\n        updated_at = now()\n    WHERE id = p_user_id;\n\n    -- If no row was updated, something is wrong (user should always have a profile)\n    IF NOT FOUND THEN\n        RAISE EXCEPTION 'Profile not found for user %', p_user_id;\n    END IF;\nEND;\n"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "vector",
+      "return_type": "vector",
+      "arguments": "vector, integer, boolean",
+      "owner": "supabase_admin",
+      "source_code": "vector"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "vector_accum",
+      "return_type": "double precision[]",
+      "arguments": "double precision[], vector",
+      "owner": "supabase_admin",
+      "source_code": "vector_accum"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "vector_add",
+      "return_type": "vector",
+      "arguments": "vector, vector",
+      "owner": "supabase_admin",
+      "source_code": "vector_add"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "vector_avg",
+      "return_type": "vector",
+      "arguments": "double precision[]",
+      "owner": "supabase_admin",
+      "source_code": "vector_avg"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "vector_cmp",
+      "return_type": "integer",
+      "arguments": "vector, vector",
+      "owner": "supabase_admin",
+      "source_code": "vector_cmp"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "vector_combine",
+      "return_type": "double precision[]",
+      "arguments": "double precision[], double precision[]",
+      "owner": "supabase_admin",
+      "source_code": "vector_combine"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "vector_concat",
+      "return_type": "vector",
+      "arguments": "vector, vector",
+      "owner": "supabase_admin",
+      "source_code": "vector_concat"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "vector_dims",
+      "return_type": "integer",
+      "arguments": "halfvec",
+      "owner": "supabase_admin",
+      "source_code": "halfvec_vector_dims"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "vector_dims",
+      "return_type": "integer",
+      "arguments": "vector",
+      "owner": "supabase_admin",
+      "source_code": "vector_dims"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "vector_eq",
+      "return_type": "boolean",
+      "arguments": "vector, vector",
+      "owner": "supabase_admin",
+      "source_code": "vector_eq"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "vector_ge",
+      "return_type": "boolean",
+      "arguments": "vector, vector",
+      "owner": "supabase_admin",
+      "source_code": "vector_ge"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "vector_gt",
+      "return_type": "boolean",
+      "arguments": "vector, vector",
+      "owner": "supabase_admin",
+      "source_code": "vector_gt"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "vector_in",
+      "return_type": "vector",
+      "arguments": "cstring, oid, integer",
+      "owner": "supabase_admin",
+      "source_code": "vector_in"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "vector_l2_squared_distance",
+      "return_type": "double precision",
+      "arguments": "vector, vector",
+      "owner": "supabase_admin",
+      "source_code": "vector_l2_squared_distance"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "vector_le",
+      "return_type": "boolean",
+      "arguments": "vector, vector",
+      "owner": "supabase_admin",
+      "source_code": "vector_le"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "vector_lt",
+      "return_type": "boolean",
+      "arguments": "vector, vector",
+      "owner": "supabase_admin",
+      "source_code": "vector_lt"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "vector_mul",
+      "return_type": "vector",
+      "arguments": "vector, vector",
+      "owner": "supabase_admin",
+      "source_code": "vector_mul"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "vector_ne",
+      "return_type": "boolean",
+      "arguments": "vector, vector",
+      "owner": "supabase_admin",
+      "source_code": "vector_ne"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "vector_negative_inner_product",
+      "return_type": "double precision",
+      "arguments": "vector, vector",
+      "owner": "supabase_admin",
+      "source_code": "vector_negative_inner_product"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "vector_norm",
+      "return_type": "double precision",
+      "arguments": "vector",
+      "owner": "supabase_admin",
+      "source_code": "vector_norm"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "vector_out",
+      "return_type": "cstring",
+      "arguments": "vector",
+      "owner": "supabase_admin",
+      "source_code": "vector_out"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "vector_recv",
+      "return_type": "vector",
+      "arguments": "internal, oid, integer",
+      "owner": "supabase_admin",
+      "source_code": "vector_recv"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "vector_send",
+      "return_type": "bytea",
+      "arguments": "vector",
+      "owner": "supabase_admin",
+      "source_code": "vector_send"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "vector_spherical_distance",
+      "return_type": "double precision",
+      "arguments": "vector, vector",
+      "owner": "supabase_admin",
+      "source_code": "vector_spherical_distance"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "vector_sub",
+      "return_type": "vector",
+      "arguments": "vector, vector",
+      "owner": "supabase_admin",
+      "source_code": "vector_sub"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "vector_to_float4",
+      "return_type": "real[]",
+      "arguments": "vector, integer, boolean",
+      "owner": "supabase_admin",
+      "source_code": "vector_to_float4"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "vector_to_halfvec",
+      "return_type": "halfvec",
+      "arguments": "vector, integer, boolean",
+      "owner": "supabase_admin",
+      "source_code": "vector_to_halfvec"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "vector_to_sparsevec",
+      "return_type": "sparsevec",
+      "arguments": "vector, integer, boolean",
+      "owner": "supabase_admin",
+      "source_code": "vector_to_sparsevec"
+    },
+    {
+      "schema_name": "public",
+      "function_name": "vector_typmod_in",
+      "return_type": "integer",
+      "arguments": "cstring[]",
+      "owner": "supabase_admin",
+      "source_code": "vector_typmod_in"
+    }
+  ]

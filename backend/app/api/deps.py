@@ -1,26 +1,27 @@
-from typing import Annotated, AsyncGenerator
-from fastapi import Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer
-from jose import JWTError, jwt
+from typing import Annotated
+from fastapi import Depends, HTTPException, status, Request
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from datetime import datetime, timedelta
 from app.core.config import settings
 from app.core.database import get_session
 from app.models.user import User
+from supabase import create_client, Client
 
-# JWT configuration
-SECRET_KEY = settings.SUPABASE_JWT_SECRET
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = settings.ACCESS_TOKEN_EXPIRE_MINUTES
+security = HTTPBearer()
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+def get_supabase() -> Client:
+    """Get a Supabase client instance."""
+    return create_client(
+        settings.SUPABASE_URL,
+        settings.SUPABASE_SERVICE_KEY
+    )
 
 async def get_current_user(
-    token: Annotated[str, Depends(oauth2_scheme)],
+    credentials: Annotated[HTTPAuthorizationCredentials, Depends(security)],
     session: AsyncSession = Depends(get_session)
 ) -> User:
-    """Get the current user from the token."""
+    """Get the current user from the Supabase JWT token."""
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -28,30 +29,15 @@ async def get_current_user(
     )
     
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        email: str = payload.get("sub")
-        if email is None:
+        # Get user from database using email
+        stmt = select(User).where(User.email == credentials.credentials)
+        result = await session.execute(stmt)
+        db_user = result.scalar_one_or_none()
+        
+        if db_user is None:
             raise credentials_exception
-    except JWTError:
-        raise credentials_exception
-    
-    # Get user from database using email
-    stmt = select(User).where(User.email == email)
-    result = await session.execute(stmt)
-    user = result.scalar_one_or_none()
-    
-    if user is None:
-        raise credentials_exception
-    
-    return user
-
-def create_access_token(data: dict, expires_delta: timedelta | None = None) -> str:
-    """Create a new access token."""
-    to_encode = data.copy()
-    if expires_delta:
-        expire = datetime.utcnow() + expires_delta
-    else:
-        expire = datetime.utcnow() + timedelta(minutes=15)
-    to_encode.update({"exp": expire})
-    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-    return encoded_jwt 
+            
+        return db_user
+        
+    except Exception as e:
+        raise credentials_exception 

@@ -1,37 +1,41 @@
-from sqlalchemy import Column, String, DateTime, ForeignKey
-from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.sql import func
-from sqlalchemy.orm import relationship
-from uuid import uuid4
-
+from datetime import datetime
+from uuid import UUID
+from sqlalchemy import String, DateTime, ForeignKey, text
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from app.models.base import Base
 
 class Channel(Base):
+    """Channel model for storing chat channels."""
+    
     __tablename__ = "channels"
     __table_args__ = {"schema": "public"}
-
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
-    slug = Column(String, nullable=False)
-    created_by = Column(UUID(as_uuid=True), ForeignKey("auth.users.id"), nullable=False)
-    inserted_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-
+    
+    # Primary key
+    id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        primary_key=True,
+        server_default=text("gen_random_uuid()")
+    )
+    
+    # Channel fields
+    slug: Mapped[str] = mapped_column(String, nullable=False)
+    created_by: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("auth.users.id", ondelete="CASCADE"),
+        nullable=False
+    )
+    
+    # Timestamps
+    inserted_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=text("now()"),
+        nullable=False
+    )
+    
     # Relationships
-    messages = relationship("Message", back_populates="channel")
-    members = relationship("ChannelMember", back_populates="channel")
-    creator = relationship("User", foreign_keys=[created_by])
-
-class ChannelMember(Base):
-    __tablename__ = "channel_members"
-    __table_args__ = {"schema": "public"}
-
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
-    channel_id = Column(UUID(as_uuid=True), ForeignKey("public.channels.id", ondelete="CASCADE"), nullable=False)
-    user_id = Column(UUID(as_uuid=True), ForeignKey("auth.users.id", ondelete="CASCADE"), nullable=False)
-    profile_id = Column(UUID(as_uuid=True), ForeignKey("public.profiles.id", ondelete="CASCADE"), nullable=False)
-    role = Column(String, nullable=False, default="member")
-    inserted_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-
-    # Relationships
-    channel = relationship("Channel", back_populates="members")
-    user = relationship("User", back_populates="channel_memberships")
-    profile = relationship("Profile", back_populates="channel_memberships") 
+    creator = relationship("User", backref="created_channels")
+    members = relationship("User", secondary="public.channel_members", backref="channels")
+    
+    def __repr__(self) -> str:
+        return f"<Channel {self.slug}>" 

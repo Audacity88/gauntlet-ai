@@ -1,61 +1,75 @@
 from datetime import datetime
-from typing import Optional
-from uuid import UUID
-from sqlalchemy import String, DateTime, Boolean, ForeignKey, text
-from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy.dialects.postgresql import UUID as PGUUID, JSONB
+from typing import Optional, Dict, Any
+from pydantic import BaseModel, EmailStr, Field, UUID4
+from enum import Enum
 
-from app.models.base import Base
+class UserStatus(str, Enum):
+    ONLINE = "online"
+    OFFLINE = "offline"
+    AWAY = "away"
 
-class User(Base):
-    """User model that matches Supabase's auth.users table."""
+class UserBase(BaseModel):
+    username: str
+    full_name: Optional[str] = None
+    avatar_url: Optional[str] = None
+    status: UserStatus = UserStatus.OFFLINE
     
-    __tablename__ = "users"
-    __table_args__ = {"schema": "auth"}
-    
-    # Required fields
-    id: Mapped[UUID] = mapped_column(
-        PGUUID(as_uuid=True), 
-        primary_key=True,
-        server_default=text("uuid_generate_v4()")
-    )
-    email: Mapped[str] = mapped_column(String, unique=True, nullable=False)
-    raw_user_meta_data: Mapped[dict] = mapped_column(JSONB, nullable=True)
-    
-    # Optional fields
-    encrypted_password: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    email_confirmed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
-    last_sign_in_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
-    
-    # Timestamps
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        server_default=text("now()"),
-        nullable=False
-    )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        server_default=text("now()"),
-        onupdate=datetime.utcnow,
-        nullable=False
-    )
-    
-    # Status
-    is_super_admin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    
+class UserCreate(UserBase):
+    email: EmailStr
+    password: str
+
+class UserUpdate(BaseModel):
+    full_name: Optional[str] = None
+    avatar_url: Optional[str] = None
+    status: Optional[UserStatus] = None
+
+class User(UserBase):
+    id: UUID4
+    created_at: datetime
+    updated_at: datetime
+    last_seen: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
     @property
-    def username(self) -> Optional[str]:
-        """Get username from metadata."""
-        if self.raw_user_meta_data:
-            return self.raw_user_meta_data.get("username")
+    def display_name(self) -> str:
+        """Return the display name for the user"""
+        return self.full_name or self.username
+
+async def get_user_by_username(supabase_client, username: str) -> Optional[User]:
+    """Fetch a user by username using the Supabase client"""
+    try:
+        response = await supabase_client.from_("profiles").select("*").eq("username", username).single().execute()
+        if response.data:
+            return User(**response.data)
         return None
-    
-    @property
-    def full_name(self) -> Optional[str]:
-        """Get full name from metadata."""
-        if self.raw_user_meta_data:
-            return self.raw_user_meta_data.get("full_name")
+    except Exception as e:
+        print(f"Error fetching user by username: {str(e)}")
         return None
-    
-    def __repr__(self) -> str:
-        return f"<User {self.id}: {self.email}>" 
+
+async def get_user_by_id(supabase_client, user_id: UUID4) -> Optional[User]:
+    """Fetch a user by ID using the Supabase client"""
+    try:
+        response = await supabase_client.from_("profiles").select("*").eq("id", str(user_id)).single().execute()
+        if response.data:
+            return User(**response.data)
+        return None
+    except Exception as e:
+        print(f"Error fetching user by ID: {str(e)}")
+        return None
+
+async def update_user(supabase_client, user_id: UUID4, update_data: UserUpdate) -> Optional[User]:
+    """Update a user's information using the Supabase client"""
+    try:
+        response = await supabase_client.from_("profiles")\
+            .update(update_data.dict(exclude_unset=True))\
+            .eq("id", str(user_id))\
+            .single()\
+            .execute()
+        if response.data:
+            return User(**response.data)
+        return None
+    except Exception as e:
+        print(f"Error updating user: {str(e)}")
+        return None 

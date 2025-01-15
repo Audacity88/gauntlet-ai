@@ -1,66 +1,92 @@
-| table_name                 | column_name  | data_type                |
-| -------------------------- | ------------ | ------------------------ |
-| channel_members            | id           | uuid                     |
-| channel_members            | channel_id   | uuid                     |
-| channel_members            | user_id      | uuid                     |
-| channel_members            | profile_id   | uuid                     |
-| channel_members            | role         | text                     |
-| channel_members            | inserted_at  | timestamp with time zone |
-| channels                   | id           | uuid                     |
-| channels                   | slug         | text                     |
-| channels                   | created_by   | uuid                     |
-| channels                   | inserted_at  | timestamp with time zone |
-| direct_message_attachments | id           | uuid                     |
-| direct_message_attachments | message_id   | uuid                     |
-| direct_message_attachments | user_id      | uuid                     |
-| direct_message_attachments | profile_id   | uuid                     |
-| direct_message_attachments | file_path    | text                     |
-| direct_message_attachments | file_name    | text                     |
-| direct_message_attachments | content_type | text                     |
-| direct_message_attachments | size         | integer                  |
-| direct_message_attachments | created_at   | timestamp with time zone |
-| direct_message_attachments | updated_at   | timestamp with time zone |
-| direct_message_channels    | id           | uuid                     |
-| direct_message_channels    | created_at   | timestamp with time zone |
-| direct_message_channels    | updated_at   | timestamp with time zone |
-| direct_message_members     | id           | uuid                     |
-| direct_message_members     | channel_id   | uuid                     |
-| direct_message_members     | user_id      | uuid                     |
-| direct_message_members     | profile_id   | uuid                     |
-| direct_message_members     | last_read_at | timestamp with time zone |
-| direct_message_members     | created_at   | timestamp with time zone |
-| direct_message_members     | username     | text                     |
-| direct_message_members     | full_name    | text                     |
-| direct_message_members     | avatar_url   | text                     |
-| direct_messages            | id           | uuid                     |
-| direct_messages            | channel_id   | uuid                     |
-| direct_messages            | user_id      | uuid                     |
-| direct_messages            | profile_id   | uuid                     |
-| direct_messages            | content      | text                     |
-| direct_messages            | created_at   | timestamp with time zone |
-| direct_messages            | updated_at   | timestamp with time zone |
-| direct_messages            | attachments  | jsonb                    |
-| direct_messages            | parent_id    | uuid                     |
-| dm_channel_members         | id           | uuid                     |
-| dm_channel_members         | channel_id   | uuid                     |
-| dm_channel_members         | user_id      | uuid                     |
-| dm_channel_members         | last_read_at | timestamp with time zone |
-| dm_channel_members         | created_at   | timestamp with time zone |
-| messages                   | id           | uuid                     |
-| messages                   | channel_id   | uuid                     |
-| messages                   | user_id      | uuid                     |
-| messages                   | profile_id   | uuid                     |
-| messages                   | inserted_at  | timestamp with time zone |
-| messages                   | created_at   | timestamp with time zone |
-| messages                   | attachments  | jsonb                    |
-| messages                   | updated_at   | timestamp with time zone |
-| messages                   | content      | text                     |
-| messages                   | parent_id    | uuid                     |
-| profiles                   | id           | uuid                     |
-| profiles                   | username     | text                     |
-| profiles                   | full_name    | text                     |
-| profiles                   | avatar_url   | text                     |
-| profiles                   | created_at   | timestamp with time zone |
-| profiles                   | updated_at   | timestamp with time zone |
-| profiles                   | status       | text                     |
-| profiles                   | last_seen    | timestamp with time zone |
+| table_name                 | column_name      | data_type                |
+| -------------------------- | ---------------- | ------------------------ |
+| channel_members            | id               | uuid                     |
+| channel_members            | channel_id       | uuid                     |
+| channel_members            | user_id          | uuid                     |
+| channel_members            | profile_id       | uuid                     |
+| channel_members            | role             | text                     |
+| channel_members            | inserted_at      | timestamp with time zone |
+| channels                   | id               | uuid                     |
+| channels                   | slug             | text                     |
+| channels                   | created_by       | uuid                     |
+| channels                   | inserted_at      | timestamp with time zone |
+| direct_message_attachments | id               | uuid                     |
+| direct_message_attachments | message_id       | uuid                     |
+| direct_message_attachments | user_id          | uuid                     |
+| direct_message_attachments | profile_id       | uuid                     |
+| direct_message_attachments | file_path        | text                     |
+| direct_message_attachments | file_name        | text                     |
+| direct_message_attachments | content_type     | text                     |
+| direct_message_attachments | size             | integer                  |
+| direct_message_attachments | created_at       | timestamp with time zone |
+| direct_message_attachments | updated_at       | timestamp with time zone |
+| direct_message_channels    | id               | uuid                     |
+| direct_message_channels    | created_at       | timestamp with time zone |
+| direct_message_channels    | updated_at       | timestamp with time zone |
+| direct_message_members     | id               | uuid                     |
+| direct_message_members     | channel_id       | uuid                     |
+| direct_message_members     | user_id          | uuid                     |
+| direct_message_members     | profile_id       | uuid                     |
+| direct_message_members     | last_read_at     | timestamp with time zone |
+| direct_message_members     | created_at       | timestamp with time zone |
+| direct_message_members     | username         | text                     |
+| direct_message_members     | full_name        | text                     |
+| direct_message_members     | avatar_url       | text                     |
+| direct_messages            | id               | uuid                     |
+| direct_messages            | channel_id       | uuid                     |
+| direct_messages            | user_id          | uuid                     |
+| direct_messages            | profile_id       | uuid                     |
+| direct_messages            | content          | text                     |
+| direct_messages            | created_at       | timestamp with time zone |
+| direct_messages            | updated_at       | timestamp with time zone |
+| direct_messages            | attachments      | jsonb                    |
+| direct_messages            | parent_id        | uuid                     |
+| dm_channel_members         | id               | uuid                     |
+| dm_channel_members         | channel_id       | uuid                     |
+| dm_channel_members         | user_id          | uuid                     |
+| dm_channel_members         | last_read_at     | timestamp with time zone |
+| dm_channel_members         | created_at       | timestamp with time zone |
+| message_attachments        | id               | uuid                     |
+| message_attachments        | message_id       | uuid                     |
+| message_attachments        | filename         | character varying        |
+| message_attachments        | file_path        | character varying        |
+| message_attachments        | file_size        | integer                  |
+| message_attachments        | content_type     | character varying        |
+| message_attachments        | inserted_at      | timestamp with time zone |
+| message_chunks             | id               | uuid                     |
+| message_chunks             | message_id       | uuid                     |
+| message_chunks             | dm_message_id    | uuid                     |
+| message_chunks             | chunk_index      | integer                  |
+| message_chunks             | chunk_content    | text                     |
+| message_chunks             | metadata         | jsonb                    |
+| message_chunks             | created_at       | timestamp with time zone |
+| message_embeddings         | id               | uuid                     |
+| message_embeddings         | chunk_id         | uuid                     |
+| message_embeddings         | embedding_vector | USER-DEFINED             |
+| message_embeddings         | created_at       | timestamp with time zone |
+| messages                   | id               | uuid                     |
+| messages                   | channel_id       | uuid                     |
+| messages                   | user_id          | uuid                     |
+| messages                   | profile_id       | uuid                     |
+| messages                   | inserted_at      | timestamp with time zone |
+| messages                   | created_at       | timestamp with time zone |
+| messages                   | attachments      | jsonb                    |
+| messages                   | updated_at       | timestamp with time zone |
+| messages                   | content          | text                     |
+| messages                   | parent_id        | uuid                     |
+| profiles                   | id               | uuid                     |
+| profiles                   | username         | text                     |
+| profiles                   | full_name        | text                     |
+| profiles                   | avatar_url       | text                     |
+| profiles                   | created_at       | timestamp with time zone |
+| profiles                   | updated_at       | timestamp with time zone |
+| profiles                   | status           | text                     |
+| profiles                   | last_seen        | timestamp with time zone |
+| rag_queries                | id               | uuid                     |
+| rag_queries                | user_id          | uuid                     |
+| rag_queries                | query_text       | text                     |
+| rag_queries                | retrieved_chunks | jsonb                    |
+| rag_queries                | response_text    | text                     |
+| rag_queries                | latency_ms       | integer                  |
+| rag_queries                | feedback_score   | integer                  |
+| rag_queries                | created_at       | timestamp with time zone |
