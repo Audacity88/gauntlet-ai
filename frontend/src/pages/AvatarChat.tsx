@@ -1,6 +1,7 @@
+import React from 'react';
 import { AvatarChat } from '../components/AvatarChat';
 
-export default function AvatarChatPage() {
+const AvatarChatPage: React.FC = () => {
   return (
     <div className="h-screen bg-gray-100">
       <div className="h-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
@@ -19,5 +20,7 @@ export default function AvatarChatPage() {
         </div>
       </div>
     </div>
-  )
-} 
+  );
+};
+
+export default AvatarChatPage; 

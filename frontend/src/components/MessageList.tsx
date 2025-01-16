@@ -20,13 +20,15 @@ interface MessageListProps {
   chatType?: 'channel' | 'dm';
   chatName?: string;
   markChannelAsRead?: (channelId: string) => Promise<void>;
+  onSendMessage?: (content: string) => Promise<void>;
 }
 
 const MessageListContent = memo(function MessageListContent({
   channelId,
   chatType = 'channel',
   chatName,
-  markChannelAsRead
+  markChannelAsRead,
+  onSendMessage
 }: MessageListProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [isUploading, setIsUploading] = useState(false);
@@ -104,7 +106,11 @@ const MessageListContent = memo(function MessageListContent({
         };
         
         try {
-          await sendMessage(content || ' ', uploadResult.url, fileMetadata);
+          if (onSendMessage) {
+            await onSendMessage(content || ' ');
+          } else {
+            await sendMessage(content || ' ', uploadResult.url, fileMetadata);
+          }
           setSelectedFile(null);
         } catch (sendErr) {
           console.error('Send error:', sendErr);
@@ -117,7 +123,11 @@ const MessageListContent = memo(function MessageListContent({
           });
         }
       } else if (content.trim()) {
-        await sendMessage(content);
+        if (onSendMessage) {
+          await onSendMessage(content);
+        } else {
+          await sendMessage(content);
+        }
       }
     } catch (err) {
       console.error('General error:', err);

@@ -1,7 +1,6 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useRealtimeMessages } from '../hooks/useRealtimeMessages';
 import { MessageList } from './MessageList';
-import { MessageInput } from './MessageInput';
 import { UserList } from './UserList';
 import { User } from '../types/models';
 import { useAuth } from '../hooks/useAuth';
@@ -12,26 +11,76 @@ interface AvatarChatProps {
   className?: string;
 }
 
+interface TargetUser extends User {
+  channelId: string;
+}
+
+interface MessageHistory {
+  content: string;
+  created_at: string;
+  username: string;
+}
+
+interface MessageSender {
+  user_id: string;
+  username: string;
+  avatar_url: string | null;
+  full_name: string;
+}
+
 export function AvatarChat({ className = '' }: AvatarChatProps) {
-  const [targetUser, setTargetUser] = useState<User | null>(null);
+  const [targetUser, setTargetUser] = useState<TargetUser | null>(null);
   const [isStreaming, setIsStreaming] = useState(false);
   const [messageId, setMessageId] = useState<string | null>(null);
+  const [messageHistory, setMessageHistory] = useState<MessageHistory[]>([]);
+  const [streamedResponse, setStreamedResponse] = useState<string>('');
+  const [chatError, setChatError] = useState<string | null>(null);
   const { user: currentUser } = useAuth();
   const { createDirectMessage } = useDirectMessages();
 
   const {
     messages,
     isLoading,
-    error,
+    error: messagesError,
     sendMessage
   } = useRealtimeMessages({
     channelId: targetUser?.channelId || '',
     chatType: 'dm'  // Always use DM mode
   });
 
+  // Fetch user's message history when selected
+  const fetchMessageHistory = useCallback(async (userId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('messages')
+        .select('content, inserted_at')
+        .eq('user_id', userId)
+        .order('inserted_at', { ascending: false })
+        .limit(50);
+
+      if (error) throw error;
+      
+      // Convert the data to match MessageHistory interface
+      const formattedData: MessageHistory[] = (data || []).map(msg => ({
+        content: msg.content,
+        created_at: msg.inserted_at,
+        username: msg.inserted_at
+      }));
+      
+      setMessageHistory(formattedData);
+    } catch (err) {
+      console.error('Failed to fetch message history:', err);
+      setMessageHistory([]);
+    }
+  }, []);
+
   const handleUserSelect = useCallback(async (user: User) => {
     try {
       setTargetUser(null); // Reset current user first
+      setMessageHistory([]); // Reset message history
+
+      // Fetch user's message history
+      await fetchMessageHistory(user.id);
 
       // Create or get existing DM channel
       const channelId = await createDirectMessage(user.username);
@@ -43,10 +92,17 @@ export function AvatarChat({ className = '' }: AvatarChatProps) {
       setTargetUser({ ...user, channelId });
       setMessageId(null); // Reset message context
     } catch (err) {
-      console.error('Failed to create/get DM channel:', err);
       alert(err instanceof Error ? err.message : 'Failed to create direct message');
     }
-  }, [createDirectMessage]);
+  }, [createDirectMessage, fetchMessageHistory]);
+
+  const formatMessageHistory = useCallback((messages: MessageHistory[]) => {
+    return messages.map(msg => ({
+      content: msg.content,
+      created_at: msg.created_at,
+      username: msg.username
+    }));
+  }, []);
 
   const handleSendMessage = useCallback(async (content: string) => {
     if (!targetUser) {
@@ -55,74 +111,94 @@ export function AvatarChat({ className = '' }: AvatarChatProps) {
     }
 
     try {
-      // First send message to the channel for display
-      await sendMessage(content);
+      // First send the message using the common functionality
+      const messageResult = await sendMessage(content);
+      console.log('User message sent successfully');
 
-      // Send to avatar API using the same endpoint as chat_cli.py
-      const response = await fetch('http://localhost:8000/api/chat', {
+      // Get current session for avatar API request
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+      if (sessionError) {
+        console.error('Error getting session:', sessionError)
+        throw new Error('No active session')
+      }
+
+      if (!session?.access_token) {
+        throw new Error('No active session or missing access token')
+      }
+
+      // Log token details for debugging
+      console.log('Making avatar API request:', {
+        tokenLength: session.access_token.length,
+        tokenPrefix: session.access_token.substring(0, 10) + '...',
+        username: targetUser.username,
+        historyLength: messageHistory.length
+      })
+
+      // Make API request to avatar service
+      const response = await fetch(isStreaming ? 'http://localhost:8000/api/chat/stream' : 'http://localhost:8000/api/chat/send', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${supabase.auth.session()?.access_token}`
+          'Authorization': `Bearer ${session.access_token}`
         },
         body: JSON.stringify({
-          message: content,
+          content,
           target_user_id: targetUser.id,
-          message_id: messageId,
-          stream: isStreaming
+          mode: 'direct'
         })
       });
 
       if (!response.ok) {
-        throw new Error(`API error: ${response.statusText}`);
+        const errorText = await response.text()
+        console.error('Avatar API error:', {
+          status: response.status,
+          statusText: response.statusText,
+          error: errorText,
+          headers: Object.fromEntries(response.headers.entries())
+        })
+        throw new Error(`Avatar API error: ${response.status} ${response.statusText} - ${errorText}`)
       }
+
+      console.log('Avatar API response received:', {
+        status: response.status,
+        headers: Object.fromEntries(response.headers.entries())
+      })
 
       if (isStreaming) {
-        // Handle streaming response
-        const reader = response.body?.getReader();
-        const decoder = new TextDecoder();
-        let streamedContent = '';
-
-        if (reader) {
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-
-            const chunk = decoder.decode(value);
-            const lines = chunk.split('\n');
-
-            for (const line of lines) {
-              if (line.startsWith('data: ')) {
-                try {
-                  const data = JSON.parse(line.slice(5));
-                  if (data.content) {
-                    streamedContent += data.content;
-                    // Update the message in real-time
-                    await sendMessage(streamedContent, { sender: targetUser });
-                  }
-                } catch (e) {
-                  console.error('Error parsing streaming data:', e);
-                }
-              }
-            }
-          }
+        const reader = response.body?.getReader()
+        if (!reader) {
+          throw new Error('Failed to get response reader')
         }
+
+        let streamedContent = ''
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+
+          const text = new TextDecoder().decode(value)
+          console.log('Received stream chunk:', text)
+          streamedContent += text
+          // Update UI with streamed content
+          setStreamedResponse(streamedContent)
+        }
+
+        console.log('Stream complete, sending avatar response')
+        // Send the avatar's response
+        await sendMessage(streamedContent)
       } else {
-        // Handle regular response
-        const data = await response.json();
-        await sendMessage(data.content, { sender: targetUser });
-
-        // Update message context
-        if (data.message_id) {
-          setMessageId(data.message_id);
-        }
+        const data = await response.json()
+        console.log('Received avatar response:', data)
+        
+        // Send the avatar's response
+        await sendMessage(data.content)
       }
-
-    } catch (err) {
-      console.error('Failed to send message:', err);
-      alert(err instanceof Error ? err.message : 'Failed to send message');
+    } catch (error) {
+      console.error('Error in handleSendMessage:', error)
+      setChatError(error instanceof Error ? error.message : 'An error occurred')
+      // Display error in UI
+      alert(error instanceof Error ? error.message : 'An error occurred while sending the message')
     }
-  }, [targetUser, sendMessage, messageId, isStreaming]);
+  }, [targetUser, sendMessage, messageId, isStreaming, messageHistory]);
 
   const handleToggleStreaming = useCallback(() => {
     setIsStreaming(prev => !prev);
@@ -144,7 +220,7 @@ export function AvatarChat({ className = '' }: AvatarChatProps) {
               onUserSelect={handleUserSelect}
               showPresence={true}
               filter="all"
-              selectedUserId={targetUser?.id}
+              activeUserId={targetUser?.id}
             />
           </div>
         </div>
@@ -181,6 +257,7 @@ export function AvatarChat({ className = '' }: AvatarChatProps) {
                 <p>Target: {targetUser?.username || 'Not set'}</p>
                 <p>Message ID: {messageId || 'None'}</p>
                 <p>Streaming: {isStreaming ? 'On' : 'Off'}</p>
+                <p>History: {messageHistory.length} messages</p>
               </div>
             </div>
           </div>
@@ -196,6 +273,7 @@ export function AvatarChat({ className = '' }: AvatarChatProps) {
                 channelId={targetUser.channelId}
                 chatType="dm"
                 chatName={targetUser.username}
+                onSendMessage={handleSendMessage}
               />
             </div>
           </>

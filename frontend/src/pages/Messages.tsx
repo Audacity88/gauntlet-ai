@@ -44,23 +44,9 @@ export default function Messages() {
     refresh: refreshDirectMessages
   } = useDirectMessages()
 
-  // Debug logging for state changes
-  useEffect(() => {
-    console.log('Channels updated:', Array.from(channels.values()))
-  }, [channels])
-
-  useEffect(() => {
-    console.log('DM channels updated:', Array.from(dmChannels?.values() || []))
-  }, [dmChannels])
-
   // Subscribe to real-time updates
   useEffect(() => {
-    if (!currentUser) {
-      console.log('No current user, skipping subscriptions')
-      return
-    }
-
-    console.log('Setting up real-time subscriptions for user:', currentUser.id)
+    if (!currentUser) return
 
     // Subscribe to channel changes
     const channelChanges = supabase
@@ -72,16 +58,8 @@ export default function Messages() {
           schema: 'public',
           table: 'channels'
         },
-        async (payload) => {
-          console.log('Channel change received:', {
-            event: payload.eventType,
-            table: 'channels',
-            data: payload.new || payload.old,
-            timestamp: new Date().toISOString()
-          })
-          console.log('Refreshing channels after change')
+        async () => {
           await refreshChannels()
-          console.log('Channels refreshed')
         }
       )
       .on(
@@ -92,35 +70,11 @@ export default function Messages() {
           table: 'channel_members',
           filter: `user_id=eq.${currentUser.id}`
         },
-        async (payload) => {
-          console.log('Channel member change received:', {
-            event: payload.eventType,
-            table: 'channel_members',
-            data: payload.new || payload.old,
-            userId: currentUser.id,
-            timestamp: new Date().toISOString()
-          })
-          
-          // If this is a new member addition and it's for the current user
-          if (payload.eventType === 'INSERT' && payload.new?.user_id === currentUser.id) {
-            console.log('New channel membership detected:', {
-              channelId: payload.new.channel_id,
-              timestamp: new Date().toISOString()
-            })
-          }
-          
-          console.log('Refreshing channels after member change')
+        async () => {
           await refreshChannels()
-          console.log('Channels refreshed after member change')
         }
       )
-      .subscribe((status) => {
-        console.log('Channel subscription status:', {
-          status,
-          timestamp: new Date().toISOString(),
-          userId: currentUser.id
-        })
-      })
+      .subscribe()
 
     // Subscribe to direct message changes
     const dmChanges = supabase
@@ -133,16 +87,8 @@ export default function Messages() {
           table: 'direct_messages',
           filter: `sender_id=eq.${currentUser.id}`,
         },
-        async (payload) => {
-          console.log('DM sender change received:', {
-            event: payload.eventType,
-            table: 'direct_messages',
-            data: payload.new || payload.old,
-            timestamp: new Date().toISOString()
-          })
-          console.log('Refreshing DMs after sender change')
+        async () => {
           await refreshDirectMessages()
-          console.log('DMs refreshed after sender change')
         }
       )
       .on(
@@ -153,25 +99,11 @@ export default function Messages() {
           table: 'direct_messages',
           filter: `receiver_id=eq.${currentUser.id}`,
         },
-        async (payload) => {
-          console.log('DM receiver change received:', {
-            event: payload.eventType,
-            table: 'direct_messages',
-            data: payload.new || payload.old,
-            timestamp: new Date().toISOString()
-          })
-          console.log('Refreshing DMs after receiver change')
+        async () => {
           await refreshDirectMessages()
-          console.log('DMs refreshed after receiver change')
         }
       )
-      .subscribe((status) => {
-        console.log('DM subscription status:', {
-          status,
-          timestamp: new Date().toISOString(),
-          channelId: currentUser.id
-        })
-      })
+      .subscribe()
 
     // Subscribe to status changes
     const statusChanges = supabase
@@ -184,30 +116,21 @@ export default function Messages() {
           table: 'profiles',
           filter: `id=eq.${currentUser.id}`
         },
-        async (payload) => {
-          console.log('Status change received:', payload)
+        async () => {
           getUserProfile(currentUser.id)
         }
       )
-      .subscribe((status) => {
-        console.log('Status subscription status:', status)
-      })
+      .subscribe()
 
     return () => {
-      console.log('Cleaning up subscriptions:', {
-        timestamp: new Date().toISOString(),
-        userId: currentUser.id
-      })
       channelChanges.unsubscribe()
       dmChanges.unsubscribe()
       statusChanges.unsubscribe()
     }
   }, [currentUser, refreshChannels, refreshDirectMessages, getUserProfile])
 
-  // Debug logging for chat changes
   useEffect(() => {
     if (currentChat) {
-      console.log('Current chat changed:', currentChat)
       invalidateChannelMessages(currentChat.id)
     }
   }, [currentChat, invalidateChannelMessages])
@@ -225,13 +148,10 @@ export default function Messages() {
     const slug = prompt('Enter channel name:')
     if (slug) {
       try {
-        console.log('Creating channel:', slug)
         const channel = await createChannel({ slug })
-        console.log('Channel created:', channel)
         
         if (channel) {
           // Add creator as channel member
-          console.log('Adding creator as channel member')
           const { error: memberError } = await supabase
             .from('channel_members')
             .insert({
@@ -241,10 +161,7 @@ export default function Messages() {
             })
 
           if (memberError) {
-            console.error('Failed to add creator as member:', memberError)
             // Continue anyway as the channel was created
-          } else {
-            console.log('Creator added as channel member')
           }
 
           setCurrentChat({
@@ -254,7 +171,6 @@ export default function Messages() {
           })
         }
       } catch (err) {
-        console.error('Failed to create channel:', err)
         alert('Failed to create channel')
       }
     }
@@ -267,9 +183,7 @@ export default function Messages() {
     }
     
     try {
-      console.log('Creating DM with user:', selectedUser)
       const channelId = await createDirectMessage(selectedUser.username)
-      console.log('DM channel created:', channelId)
       
       setCurrentChat({
         type: 'dm',
@@ -277,7 +191,6 @@ export default function Messages() {
         name: selectedUser.username || selectedUser.full_name || 'Unknown User'
       })
     } catch (err) {
-      console.error('Failed to create DM:', err)
       alert(err instanceof Error ? err.message : 'Failed to create direct message')
     }
   }
@@ -290,46 +203,26 @@ export default function Messages() {
 
     // Check if channel exists in current list
     const channel = Array.from(channels.values()).find(ch => ch.id === channelId)
-    console.log('Checking channel in current list:', {
-      channelId,
-      found: !!channel,
-      availableChannels: Array.from(channels.values()).map(ch => ({
-        id: ch.id,
-        slug: ch.slug,
-        created_by: ch.created_by
-      }))
-    })
 
     if (!channel) {
-      console.error('Channel not found in current list:', channelId)
       alert('Channel not found. The page may be out of date - please refresh.')
       return
     }
 
     if (confirm('Are you sure you want to delete this channel?')) {
       try {
-        console.log('Attempting to delete channel:', {
-          channelId,
-          userId: currentUser.id,
-          isCreator: channel.created_by === currentUser.id
-        })
         await deleteChannel(channelId)
-        console.log('Channel deleted successfully:', channelId)
         if (currentChat?.id === channelId) {
           setCurrentChat(null)
         }
       } catch (err) {
-        console.error('Failed to delete channel:', err)
         alert('Failed to delete channel')
       }
     }
   }
 
   const handleChannelClick = useCallback(async (channel: Channel) => {
-    if (!currentUser) {
-      console.error('No user found')
-      return
-    }
+    if (!currentUser) return
 
     try {
       // Check if user is already a member
@@ -341,7 +234,6 @@ export default function Messages() {
         .maybeSingle()
 
       if (memberError) {
-        console.error('Error checking channel membership:', memberError)
         alert('Error joining channel. Please try again.')
         return
       }
@@ -356,7 +248,6 @@ export default function Messages() {
           })
 
         if (joinError) {
-          console.error('Error joining channel:', joinError)
           alert('Error joining channel. Please try again.')
           return
         }
@@ -369,7 +260,6 @@ export default function Messages() {
         name: channel.slug
       })
     } catch (error) {
-      console.error('Error in handleChannelClick:', error)
       alert('Error joining channel. Please try again.')
     }
   }, [currentUser, setCurrentChat])

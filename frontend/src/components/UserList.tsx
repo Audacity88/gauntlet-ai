@@ -4,6 +4,7 @@ import { UserPresence } from './UserPresence';
 import { User } from '../types/models';
 import { useAuth } from '../hooks/useAuth';
 import { supabase } from '../lib/supabaseClient';
+import { useStatusStore } from '../stores/statusStore';
 
 interface UserListProps {
   onUserSelect?: (user: User) => void;
@@ -23,6 +24,9 @@ export function UserList({
   const [error, setError] = useState<Error | null>(null)
   const { user: currentUser } = useAuth()
   const { getUser } = useUserCache()
+  const subscribeToUserStatus = useStatusStore(state => state.subscribeToUserStatus)
+  const getUserStatus = useStatusStore(state => state.getUserStatus)
+  const userStatuses = useStatusStore(state => state.userStatuses)
 
   // Load users
   useEffect(() => {
@@ -42,6 +46,10 @@ export function UserList({
 
         if (mounted && data) {
           setUsers(data)
+          // Subscribe to status updates for all users
+          data.forEach(user => {
+            subscribeToUserStatus(user.id)
+          })
         }
       } catch (err) {
         if (mounted) {
@@ -73,6 +81,7 @@ export function UserList({
             setUsers(prevUsers => {
               const userIndex = prevUsers.findIndex(u => u.id === updatedUser.id)
               if (userIndex === -1) {
+                subscribeToUserStatus(updatedUser.id)
                 return [...prevUsers, updatedUser]
               }
               const newUsers = [...prevUsers]
@@ -88,26 +97,24 @@ export function UserList({
       mounted = false
       supabase.removeChannel(channel)
     }
-  }, [])
+  }, [subscribeToUserStatus])
 
   // Filter and sort users
   const filteredUsers = useMemo(() => {
     return users
       .filter(user => {
         if (filter === 'all') return true
-        // Convert database status to uppercase for comparison
-        const userStatus = (user.status || 'offline').toUpperCase()
+        const userStatus = userStatuses[user.id]?.toUpperCase() || 'OFFLINE'
         return filter === 'online' ? userStatus === 'ONLINE' : userStatus === 'OFFLINE'
       })
       .sort((a, b) => {
         // Sort by status (online first) then by username
-        // Convert database status to uppercase for comparison
-        const statusA = (a.status || 'offline').toUpperCase() === 'ONLINE' ? 0 : 1
-        const statusB = (b.status || 'offline').toUpperCase() === 'ONLINE' ? 0 : 1
+        const statusA = (userStatuses[a.id]?.toUpperCase() || 'OFFLINE') === 'ONLINE' ? 0 : 1
+        const statusB = (userStatuses[b.id]?.toUpperCase() || 'OFFLINE') === 'ONLINE' ? 0 : 1
         if (statusA !== statusB) return statusA - statusB
         return a.username.localeCompare(b.username)
       })
-  }, [users, filter])
+  }, [users, filter, userStatuses])
 
   const handleUserClick = useCallback((user: User) => {
     if (onUserSelect && user.id !== currentUser?.id) {

@@ -69,7 +69,7 @@ export const DirectMessageList = memo(function DirectMessageList({
           `}
           role="button"
           tabIndex={0}
-          aria-label={`Message from ${message.sender?.username}`}
+          aria-label={`Message from ${message.sender?.full_name || message.sender?.username}`}
         >
           <div className="relative">
             <img
@@ -87,7 +87,7 @@ export const DirectMessageList = memo(function DirectMessageList({
           <div className="flex-1 min-w-0">
             <div className="flex items-center justify-between">
               <span className="font-medium text-gray-900">
-                {message.sender?.username || 'Unknown User'}
+                {message.sender?.full_name || message.sender?.username || 'Unknown User'}
               </span>
               <span className="text-sm text-gray-500">
                 {new Date(message.created_at).toLocaleTimeString()}

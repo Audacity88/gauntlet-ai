@@ -135,7 +135,7 @@ export function useDirectMessages() {
         const members = channel.members || []
         const otherMember = members.find(m => m.user_id !== user.id)
         if (otherMember) {
-          channelMap.set(channel.id, {
+          channelMap.set(otherMember.user_id, {
             id: channel.id,
             members: members.map(m => ({ 
               user: {
@@ -199,17 +199,12 @@ export function useDirectMessages() {
         throw new Error(userError?.message || `User "${otherUsername}" not found`)
       }
 
-      // First check if a DM channel already exists between these users
-      const { data: existingChannel, error: existingError } = await supabase
-        .from('direct_message_channels')
-        .select(`
-          id,
-          members:direct_message_members(user_id)
-        `)
-        .contains('members', [{ user_id: user.id }, { user_id: otherProfile.id }])
-        .single()
+      // Check if a DM channel already exists with this user
+      const existingChannel = Array.from(conversations.values()).find(
+        conv => conv.otherUser.id === otherProfile.id
+      )
 
-      if (!existingError && existingChannel) {
+      if (existingChannel) {
         return existingChannel.id
       }
 
@@ -251,8 +246,8 @@ export function useDirectMessages() {
 
       return newChannel.id
     } catch (err) {
-      console.error('Failed to create direct message:', err)
-      throw err instanceof Error ? err : new Error('Failed to create direct message')
+      console.error('Failed to create DM:', err)
+      throw err
     }
   }
 
@@ -260,7 +255,7 @@ export function useDirectMessages() {
     conversations,
     loading,
     error,
-    createDirectMessage,
-    refresh: loadChannels
+    refresh: loadChannels,
+    createDirectMessage
   }
 } 

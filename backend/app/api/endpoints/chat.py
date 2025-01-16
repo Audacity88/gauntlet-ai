@@ -15,6 +15,8 @@ from app.models.chat import (
 )
 from datetime import datetime
 import json
+from app.rag.llm import LLMProcessor
+from app.core.config import settings
 
 router = APIRouter()
 
@@ -72,14 +74,61 @@ async def send_message(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Could not create message"
             )
+
+        # Format context for LLM
+        formatted_messages = "\n".join([
+            f"{msg.role}: {msg.content}" for msg in context.messages
+        ])
+
+        # Get target user's username
+        target_user_response = db.from_("profiles").select("username").eq("id", str(request.target_user_id)).single().execute()
+        if not target_user_response.data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Target user not found"
+            )
+        target_username = target_user_response.data["username"]
+
+        # Generate avatar response using LLM
+        llm_processor = LLMProcessor(api_key=settings.OPENAI_API_KEY)
+        llm_response = await llm_processor.generate_rag_response(
+            query=request.content,
+            context=formatted_messages,
+            username=target_username
+        )
+
+        # Create avatar's response message
+        avatar_message = await create_message(
+            db,
+            request.target_user_id,  # Avatar message comes from target user
+            request.target_user_id,
+            MessageCreate(
+                content=llm_response["content"],
+                channel_id=context.channel_id,
+                message_type=request.message_type or MessageType.TEXT,
+                parent_id=user_message.id,  # Link to user's message
+                metadata={
+                    **message_metadata,
+                    "is_avatar_response": True,
+                    "model": llm_response["model"],
+                    "usage": llm_response["usage"]
+                }
+            )
+        )
+
+        if not avatar_message:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Could not create avatar response"
+            )
             
-        # Return the created message as the response
+        # Return the avatar's response
         return ChatResponse(
-            message_id=user_message.id,
-            content=user_message.content,
-            role=ChatRole.USER,
-            created_at=user_message.inserted_at or datetime.utcnow(),
-            metadata=user_message.metadata
+            message_id=avatar_message.id,
+            content=avatar_message.content,
+            role=ChatRole.ASSISTANT,
+            created_at=avatar_message.inserted_at or datetime.utcnow(),
+            metadata=avatar_message.metadata
         )
             
     except Exception as e:

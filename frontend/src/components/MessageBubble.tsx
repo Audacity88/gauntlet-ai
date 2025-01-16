@@ -125,7 +125,7 @@ const MessageBubbleContent = memo(function MessageBubbleContent({
         ) : (
           <div className="w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center">
             <span className="text-indigo-700 font-medium">
-              {user.username.charAt(0).toUpperCase()}
+              {user.full_name?.charAt(0).toUpperCase() || user.username.charAt(0).toUpperCase()}
             </span>
           </div>
         )}
@@ -149,7 +149,7 @@ const MessageBubbleContent = memo(function MessageBubbleContent({
               isCurrentUser ? 'flex-row-reverse space-x-reverse' : ''
             }`}
           >
-            <span className="font-medium text-gray-900">{user.username}</span>
+            <span className="font-medium text-gray-900">{user.full_name || user.username}</span>
             <span className="text-sm text-gray-500">
               {messageDate.toLocaleString(undefined, {
                 month: 'short',
