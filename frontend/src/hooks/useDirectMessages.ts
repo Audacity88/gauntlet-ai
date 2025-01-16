@@ -91,14 +91,16 @@ export function useDirectMessages() {
           id,
           created_at,
           updated_at,
-          members:direct_message_members(
+          members:direct_message_members!inner(
             id,
             user_id,
             profile_id,
             last_read_at,
-            username,
-            full_name,
-            avatar_url
+            profile:profiles!direct_message_members_profile_id_fkey(
+              username,
+              full_name,
+              avatar_url
+            )
           )
         `)
         .order('updated_at', { ascending: false })
@@ -118,8 +120,7 @@ export function useDirectMessages() {
           profile_id,
           content,
           created_at,
-          updated_at,
-          attachments
+          updated_at
         `)
         .order('created_at', { ascending: false })
 
@@ -139,17 +140,17 @@ export function useDirectMessages() {
             members: members.map(m => ({ 
               user: {
                 id: m.user_id,
-                username: m.username,
-                full_name: m.full_name,
-                avatar_url: m.avatar_url
+                username: m.profile.username,
+                full_name: m.profile.full_name,
+                avatar_url: m.profile.avatar_url
               },
               last_read_at: m.last_read_at 
             })),
             otherUser: {
               id: otherMember.user_id,
-              username: otherMember.username,
-              full_name: otherMember.full_name,
-              avatar_url: otherMember.avatar_url
+              username: otherMember.profile.username,
+              full_name: otherMember.profile.full_name,
+              avatar_url: otherMember.profile.avatar_url
             },
             messages: messages
               .filter(m => m.channel_id === channel.id)
@@ -159,9 +160,9 @@ export function useDirectMessages() {
                   ...m,
                   user: memberInfo ? {
                     id: memberInfo.user_id,
-                    username: memberInfo.username,
-                    full_name: memberInfo.full_name,
-                    avatar_url: memberInfo.avatar_url
+                    username: memberInfo.profile.username,
+                    full_name: memberInfo.profile.full_name,
+                    avatar_url: memberInfo.profile.avatar_url
                   } : null
                 }
               }),

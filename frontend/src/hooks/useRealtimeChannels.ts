@@ -153,6 +153,45 @@ export function useRealtimeChannels({ type }: UseRealtimeChannelsProps = {}) {
           }
         }
       )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'channel_members',
+          filter: `user_id=eq.${user.id}`
+        },
+        async (payload) => {
+          if (!isSubscribed) return;
+
+          try {
+            if (payload.eventType === 'INSERT') {
+              // Fetch the full channel data when added as a member
+              const { data: channelData, error } = await supabase
+                .from('channels')
+                .select(`
+                  *,
+                  creator:profiles!channels_created_by_fkey(*)
+                `)
+                .eq('id', payload.new.channel_id)
+                .single();
+
+              if (!error && channelData) {
+                const processed = channelProcessor.processChannel(channelData);
+                if (processed) {
+                  addChannel(processed);
+                }
+              }
+            } else if (payload.eventType === 'DELETE') {
+              // Remove channel when removed as a member
+              removeChannel(payload.old.channel_id);
+            }
+          } catch (err) {
+            console.error('Error processing channel member change:', err);
+            setError(err instanceof Error ? err : new Error('Failed to process channel member change'));
+          }
+        }
+      )
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') {
           console.log('Successfully subscribed to channel changes');

@@ -95,13 +95,15 @@ export function UserList({
     return users
       .filter(user => {
         if (filter === 'all') return true
-        const userStatus = user.status || 'OFFLINE'
+        // Convert database status to uppercase for comparison
+        const userStatus = (user.status || 'offline').toUpperCase()
         return filter === 'online' ? userStatus === 'ONLINE' : userStatus === 'OFFLINE'
       })
       .sort((a, b) => {
         // Sort by status (online first) then by username
-        const statusA = a.status === 'ONLINE' ? 0 : 1
-        const statusB = b.status === 'ONLINE' ? 0 : 1
+        // Convert database status to uppercase for comparison
+        const statusA = (a.status || 'offline').toUpperCase() === 'ONLINE' ? 0 : 1
+        const statusB = (b.status || 'offline').toUpperCase() === 'ONLINE' ? 0 : 1
         if (statusA !== statusB) return statusA - statusB
         return a.username.localeCompare(b.username)
       })

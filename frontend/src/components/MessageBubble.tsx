@@ -299,7 +299,7 @@ const MessageBubbleContent = memo(function MessageBubbleContent({
           <div className={`mt-1 ${isCurrentUser ? 'text-right' : 'text-left'}`}>
             <button
               onClick={() => onOpenThread(message)}
-              className="text-xs text-blue-600 hover:underline"
+              className="text-xs px-2 py-1 text-gray-500 hover:text-gray-700 bg-indigo-50 hover:bg-indigo-100 rounded"
             >
               Reply in thread
             </button>

@@ -13,7 +13,7 @@ CREATE TABLE public.profiles (
     username TEXT UNIQUE NOT NULL,
     full_name TEXT,
     avatar_url TEXT,
-    status TEXT DEFAULT 'offline',
+    status TEXT DEFAULT 'offline' CHECK (status IN ('online', 'offline', 'away', 'busy')),
     last_seen TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
@@ -27,15 +27,11 @@ DROP POLICY IF EXISTS "Users can view all profiles" ON public.profiles;
 CREATE POLICY "Users can view all profiles" ON public.profiles
   FOR SELECT USING (true);
 
-DROP POLICY IF EXISTS "Users can update their own profile" ON public.profiles;
-CREATE POLICY "Users can update their own profile" ON public.profiles
-  FOR UPDATE USING (auth.uid()::text = id::text);
+CREATE POLICY "Users can update own profile" ON public.profiles
+  FOR UPDATE USING (auth.uid() = id);
 
-DROP POLICY IF EXISTS "Service role can manage profiles" ON public.profiles;
-CREATE POLICY "Service role can manage profiles" ON public.profiles
-  FOR ALL TO service_role
-  USING (true)
-  WITH CHECK (true);
+CREATE POLICY "Users can insert own profile" ON public.profiles
+  FOR INSERT WITH CHECK (auth.uid() = id);
 
 -- Create channels table
 CREATE TABLE public.channels (
@@ -43,7 +39,7 @@ CREATE TABLE public.channels (
     slug TEXT NOT NULL,
     created_by UUID NOT NULL,
     inserted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CONSTRAINT channels_created_by_fkey FOREIGN KEY (created_by) REFERENCES auth.users(id) ON DELETE CASCADE
+    CONSTRAINT channels_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.profiles(id) ON DELETE CASCADE
 );
 
 -- Create channel_members table
@@ -171,28 +167,47 @@ CREATE POLICY "Service role can access users" ON auth.users
 CREATE OR REPLACE FUNCTION public.sync_existing_users()
 RETURNS void AS $$
 BEGIN
-  INSERT INTO public.profiles (id, username, full_name)
+  INSERT INTO public.profiles (
+    id,
+    username,
+    full_name,
+    status,
+    created_at,
+    updated_at
+  )
   SELECT 
     users.id,
-    users.email,
-    COALESCE(users.raw_user_meta_data->>'full_name', users.email)
+    COALESCE(users.raw_user_meta_data->>'username', users.email),
+    COALESCE(users.raw_user_meta_data->>'full_name', split_part(users.email, '@', 1)),
+    'offline',
+    users.created_at,
+    users.updated_at
   FROM auth.users
   LEFT JOIN public.profiles ON users.id = profiles.id
   WHERE profiles.id IS NULL;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- Create a trigger to create a profile for each new user
+-- Create function to handle new user creation
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
 BEGIN
-  INSERT INTO public.profiles (id, username, full_name)
-  VALUES (
-    new.id,
-    new.email,
-    COALESCE(new.raw_user_meta_data->>'full_name', new.email)
+  INSERT INTO public.profiles (
+    id,
+    username,
+    full_name,
+    status,
+    created_at,
+    updated_at
+  ) VALUES (
+    NEW.id,
+    COALESCE(NEW.raw_user_meta_data->>'username', NEW.email),
+    COALESCE(NEW.raw_user_meta_data->>'full_name', split_part(NEW.email, '@', 1)),
+    'offline',
+    NEW.created_at,
+    NEW.updated_at
   );
-  RETURN new;
+  RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
@@ -202,6 +217,9 @@ CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW
   EXECUTE FUNCTION public.handle_new_user();
+
+-- Run sync for any existing users without profiles
+SELECT sync_existing_users();
 
 -- Create policies for direct messages
 CREATE POLICY "Users can view direct messages they are members of" ON public.direct_messages
@@ -249,7 +267,7 @@ CREATE POLICY "Users can join DM channels" ON public.direct_message_members
 -- Update existing status values to lowercase
 UPDATE public.profiles SET status = LOWER(status);
 
--- Add check constraint to ensure status is one of the valid values
-ALTER TABLE public.profiles ADD CONSTRAINT profiles_status_check 
-    CHECK (status IN ('online', 'offline', 'away'));
+-- Remove duplicate constraint since it's already defined in the table creation
+-- ALTER TABLE public.profiles ADD CONSTRAINT profiles_status_check 
+--    CHECK (status IN ('online', 'offline', 'away', 'busy'));
  

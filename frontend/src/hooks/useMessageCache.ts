@@ -23,14 +23,17 @@ interface UseMessageCacheResult {
 }
 
 const validateMessage = (message: MessageWithUser): boolean => {
+  // Allow messages without content (e.g. for attachments)
   return !!(
     message &&
     message.id &&
-    message.content &&
     message.channel_id &&
     message.user_id &&
     message.user &&
-    message.user.id
+    message.user.id &&
+    // Ensure required timestamps exist
+    message.created_at &&
+    message.updated_at
   );
 };
 
@@ -44,6 +47,7 @@ export const useMessageCache = (): UseMessageCacheResult => {
       setError(null);
       return cacheIntegration.getMessage(id);
     } catch (err) {
+      console.error('Failed to get message from cache:', err);
       setError(err instanceof Error ? err : new Error('Failed to get message from cache'));
       return null;
     }
@@ -53,10 +57,12 @@ export const useMessageCache = (): UseMessageCacheResult => {
     try {
       setError(null);
       if (!validateMessage(message)) {
+        console.error('Invalid message format:', message);
         throw new Error('Failed to set message in cache: Invalid message format');
       }
       cacheIntegration.setMessage(id, message);
     } catch (err) {
+      console.error('Failed to set message in cache:', err);
       setError(err instanceof Error ? err : new Error('Failed to set message in cache'));
     }
   }, []);
@@ -66,6 +72,7 @@ export const useMessageCache = (): UseMessageCacheResult => {
       setError(null);
       cacheIntegration.invalidateMessage(id);
     } catch (err) {
+      console.error('Failed to invalidate message in cache:', err);
       setError(err instanceof Error ? err : new Error('Failed to invalidate message in cache'));
     }
   }, []);
@@ -75,6 +82,7 @@ export const useMessageCache = (): UseMessageCacheResult => {
       setError(null);
       cacheIntegration.invalidateChannelMessages(channelId);
     } catch (err) {
+      console.error('Failed to invalidate channel messages in cache:', err);
       setError(err instanceof Error ? err : new Error('Failed to invalidate channel messages in cache'));
     }
   }, []);
@@ -84,6 +92,7 @@ export const useMessageCache = (): UseMessageCacheResult => {
       setError(null);
       cacheIntegration.invalidateUserMessages(userId);
     } catch (err) {
+      console.error('Failed to invalidate user messages in cache:', err);
       setError(err instanceof Error ? err : new Error('Failed to invalidate user messages in cache'));
     }
   }, []);

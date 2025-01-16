@@ -81,6 +81,8 @@ export function useRealtimeDirectMessages({ userId }: UseRealtimeDirectMessagesP
   useEffect(() => {
     if (!user || !messageProcessor) return;
 
+    let isSubscribed = true;
+
     // Clear processed messages when subscribing
     messageProcessor.clearProcessedIds();
 
@@ -96,25 +98,65 @@ export function useRealtimeDirectMessages({ userId }: UseRealtimeDirectMessagesP
             ? `or(sender_id.eq.${userId},receiver_id.eq.${userId})`
             : undefined
         },
-        (payload) => {
-          if (payload.eventType === 'INSERT' && !messageProcessor.hasProcessed(payload.new.id)) {
-            processMessage(payload.new as DirectMessage);
-          } else if (payload.eventType === 'UPDATE') {
-            const processed = messageProcessor.processDirectMessage({
-              ...payload.new as DirectMessage,
-              eventType: 'UPDATE'
-            });
-            if (processed) {
-              updateMessage(processed.id, processed);
+        async (payload) => {
+          if (!isSubscribed) return;
+
+          try {
+            if (payload.eventType === 'INSERT' && !messageProcessor.hasProcessed(payload.new.id)) {
+              // Fetch full message data with sender and receiver profiles
+              const { data: messageData, error } = await supabase
+                .from('direct_messages')
+                .select(`
+                  *,
+                  sender:profiles!direct_messages_sender_id_fkey(*),
+                  receiver:profiles!direct_messages_receiver_id_fkey(*)
+                `)
+                .eq('id', payload.new.id)
+                .single();
+
+              if (!error && messageData) {
+                const processed = messageProcessor.processDirectMessage(messageData);
+                if (processed) {
+                  addMessage(processed);
+                }
+              }
+            } else if (payload.eventType === 'UPDATE') {
+              const { data: messageData, error } = await supabase
+                .from('direct_messages')
+                .select(`
+                  *,
+                  sender:profiles!direct_messages_sender_id_fkey(*),
+                  receiver:profiles!direct_messages_receiver_id_fkey(*)
+                `)
+                .eq('id', payload.new.id)
+                .single();
+
+              if (!error && messageData) {
+                const processed = messageProcessor.processDirectMessage({
+                  ...messageData,
+                  eventType: 'UPDATE'
+                });
+                if (processed) {
+                  updateMessage(processed.id, processed);
+                }
+              }
+            } else if (payload.eventType === 'DELETE') {
+              removeMessage(payload.old.id);
             }
-          } else if (payload.eventType === 'DELETE') {
-            removeMessage(payload.old.id);
+          } catch (err) {
+            console.error('Error processing direct message change:', err);
           }
         }
       )
-      .subscribe();
+      .subscribe((status, err) => {
+        console.log('Direct messages subscription status:', status, err || 'No error');
+        if (err) {
+          console.error('Direct messages subscription error:', err);
+        }
+      });
 
     return () => {
+      isSubscribed = false;
       messageProcessor.clearProcessedIds();
       supabase.removeChannel(channel);
     };
