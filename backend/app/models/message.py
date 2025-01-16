@@ -39,7 +39,7 @@ async def create_message(
     user_id: UUID,
     profile_id: UUID,
     message_data: Union[MessageCreate, Dict[str, Any]]
-) -> Optional[Dict[str, Any]]:
+) -> Optional[Message]:
     """Create a new message"""
     try:
         # Convert Pydantic model to dict if needed
@@ -67,13 +67,30 @@ async def create_message(
         table = "direct_messages" if is_direct else "messages"
         print(f"Creating message in {table} table")
         
-        # Insert the message and await the response
-        response = await supabase_client.from_(table).insert(message_insert).execute()
+        # Insert the message using synchronous query
+        response = supabase_client.table(table)\
+            .insert(message_insert)\
+            .execute()
         
         if response and hasattr(response, 'data') and response.data:
             created_message = response.data[0]
             print(f"Message created successfully in {table}")
-            return created_message
+            
+            # Convert the response data to a Message object
+            return Message(
+                id=UUID(created_message['id']),
+                user_id=UUID(created_message['user_id']),
+                profile_id=UUID(created_message['profile_id']),
+                content=created_message['content'],
+                message_type=MessageType(created_message.get('message_type', 'text')),
+                parent_id=UUID(created_message['parent_id']) if created_message.get('parent_id') else None,
+                channel_id=UUID(created_message['channel_id']),
+                attachments=created_message.get('attachments'),
+                metadata=created_message.get('metadata'),
+                inserted_at=datetime.fromisoformat(created_message['created_at'].replace('Z', '+00:00')),
+                updated_at=datetime.fromisoformat(created_message['updated_at'].replace('Z', '+00:00')) if created_message.get('updated_at') else None,
+                deleted_at=datetime.fromisoformat(created_message['deleted_at'].replace('Z', '+00:00')) if created_message.get('deleted_at') else None
+            )
         else:
             print(f"Error creating message: No data in response")
             return None
