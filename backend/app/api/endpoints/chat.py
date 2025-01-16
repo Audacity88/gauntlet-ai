@@ -4,7 +4,7 @@ from fastapi.responses import StreamingResponse
 from app.core.database import get_db, Client
 from app.core.auth import get_current_user
 from app.models.user import User
-from app.models.message import create_message, MessageCreate
+from app.models.message import create_message, MessageCreate, MessageType
 from app.models.chat import (
     ChatRequest,
     ChatResponse,
@@ -18,39 +18,55 @@ import json
 
 router = APIRouter()
 
-@router.post("/send", response_model=ChatResponse)
+@router.post("/send")
 async def send_message(
     request: ChatRequest,
     current_user: User = Depends(get_current_user),
     db: Client = Depends(get_db)
 ) -> ChatResponse:
-    """
-    Send a message and get a response that imitates the target user.
-    """
+    """Send a message and get a response"""
+    print(f"Processing message request from {current_user.id} to {request.target_user_id}")
+    
+    # Get chat context - NO try/except here
+    context = await format_chat_context(
+        db,
+        current_user.id,
+        request.target_user_id,
+        request.channel_id,
+        request.message_id
+    )
+    print(f"Chat context retrieved: {context}")
+    
+    # Only wrap message creation in try/except
     try:
-        # Get chat context
-        context = await format_chat_context(
-            db,
-            current_user.id,
-            request.target_user_id,
-            request.channel_id,
-            request.message_id
-        )
+        # Prepare metadata
+        message_metadata = {
+            "mode": request.mode or "direct",  # Default to direct mode
+            "message_count": context.metadata.get("message_count", 0) if context.metadata else 0
+        }
         
-        # Create user message
+        if request.target_user_id:
+            message_metadata["target_user_id"] = str(request.target_user_id)
+            
+        if request.metadata:
+            message_metadata.update(request.metadata)
+            
+        print(f"Creating user message with metadata: {message_metadata}")
+        
+        # Create user message - NO try/except here since create_message handles its own errors
         user_message = await create_message(
             db,
-            current_user.id,  # This is the profile_id since it comes from the User model
+            current_user.id,
+            current_user.id,  # Using current_user.id as profile_id since they're the same in this case
             MessageCreate(
                 content=request.content,
-                channel_id=request.channel_id,
-                metadata={
-                    "target_user_id": str(request.target_user_id) if request.target_user_id else None,
-                    "mode": request.mode,
-                    **(request.metadata or {})
-                }
+                channel_id=context.channel_id,
+                message_type=request.message_type or MessageType.TEXT,
+                parent_id=request.message_id,
+                metadata=message_metadata
             )
         )
+        print(f"User message created: {user_message}")
         
         if not user_message:
             raise HTTPException(
@@ -58,25 +74,35 @@ async def send_message(
                 detail="Could not create message"
             )
             
-        # TODO: Generate response using LLM
-        # For now, return an echo response
-        response_content = f"Echo: {request.content}"
+        # Create assistant message - NO try/except here since create_message handles its own errors
+        assistant_metadata = {
+            "is_assistant": True,
+            "mode": request.mode or "direct",
+            "message_count": (context.metadata.get("message_count", 0) if context.metadata else 0) + 1
+        }
         
-        # Create assistant message
+        if request.target_user_id:
+            assistant_metadata["target_user_id"] = str(current_user.id)
+            
+        if request.metadata:
+            assistant_metadata.update(request.metadata)
+            
+        print(f"Creating assistant message with metadata: {assistant_metadata}")
+        
+        # For now, just echo the message back
         assistant_message = await create_message(
             db,
-            current_user.id,  # This is correct since it's the profile_id
+            current_user.id,
+            current_user.id,  # Using current_user.id as profile_id since they're the same in this case
             MessageCreate(
-                content=response_content,
-                channel_id=request.channel_id,
-                metadata={
-                    "is_assistant": True,
-                    "target_user_id": str(current_user.id),
-                    "mode": request.mode,
-                    **(request.metadata or {})
-                }
+                content=f"Echo: {request.content}",
+                channel_id=context.channel_id,
+                message_type=MessageType.TEXT,
+                parent_id=user_message.id if request.message_type == MessageType.THREAD else None,
+                metadata=assistant_metadata
             )
         )
+        print(f"Assistant message created: {assistant_message}")
         
         if not assistant_message:
             raise HTTPException(
@@ -86,17 +112,27 @@ async def send_message(
             
         return ChatResponse(
             message_id=assistant_message.id,
-            content=response_content,
+            content=assistant_message.content,
             role=ChatRole.ASSISTANT,
             created_at=assistant_message.inserted_at,
             metadata=assistant_message.metadata
         )
         
+    except HTTPException as e:
+        # Re-raise HTTP exceptions
+        raise
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error processing chat request: {str(e)}"
-        )
+        # Only catch actual errors, not dictionary responses
+        if isinstance(e, dict) and "channel_id" in e:
+            # This is actually a successful response
+            print(f"Successfully got channel: {e}")
+            return e
+        else:
+            print(f"Error in send_message: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Error processing chat request: {str(e)}"
+            )
 
 @router.post("/stream")
 async def stream_message(

@@ -25,7 +25,7 @@ async def create_new_message(
     """
     Create a new message.
     """
-    message = await create_message(db, current_user.id, message_data)
+    message = await create_message(db, current_user.id, current_user.id, message_data)
     if not message:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
