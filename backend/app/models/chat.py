@@ -43,6 +43,33 @@ class ChatContext(BaseModel):
     channel_id: Optional[UUID4] = None
     metadata: Optional[Dict[str, Any]] = None
 
+def convert_to_chat_message(db_message: Dict[str, Any]) -> ChatMessage:
+    """Convert a database message to a ChatMessage object"""
+    # Extract profile info if available
+    profile_info = {}
+    if 'profiles' in db_message and db_message['profiles']:
+        profile_info = {
+            'username': db_message['profiles'].get('username'),
+            'full_name': db_message['profiles'].get('full_name'),
+            'avatar_url': db_message['profiles'].get('avatar_url')
+        }
+    
+    # Create metadata with message details and profile info
+    metadata = {
+        'id': db_message.get('id'),
+        'created_at': db_message.get('created_at'),
+        'message_type': db_message.get('message_type', 'text'),
+        'channel_id': db_message.get('channel_id'),
+        'user_id': db_message.get('user_id'),
+        **profile_info
+    }
+    
+    return ChatMessage(
+        role=ChatRole.USER,  # All messages in DMs are from users
+        content=db_message.get('content', ''),
+        metadata=metadata
+    )
+
 async def get_or_create_dm_channel(
     supabase_client: Client,
     user_id: UUID,
@@ -123,7 +150,7 @@ async def format_chat_context(
                 .execute()
                 
             if hasattr(response, 'data') and response.data:
-                messages = response.data
+                messages = [convert_to_chat_message(msg) for msg in response.data]
                 print(f"Found {len(messages)} messages in channel")
             else:
                 print("No messages found in channel")
@@ -137,18 +164,18 @@ async def format_chat_context(
         dm_channel_id = await get_or_create_dm_channel(supabase_client, user_id, target_user_id)
         if dm_channel_id:
             try:
-                # Use the RPC function to get messages with profiles
-                response = await supabase_client.rpc(
-                    'get_dm_messages_with_profiles',
-                    {
-                        'p_channel_id': str(dm_channel_id),
-                        'p_user_id': str(user_id),
-                        'p_limit': limit
-                    }
-                ).execute()
+                # Get messages from the direct_messages table with profile info using synchronous query
+                response = supabase_client.table('direct_messages')\
+                    .select('*, profiles(username, full_name, avatar_url)')\
+                    .eq('channel_id', str(dm_channel_id))\
+                    .is_('deleted_at', 'null')\
+                    .order('created_at', desc=True)\
+                    .limit(limit)\
+                    .execute()
                 
-                if response and hasattr(response, 'data'):
-                    messages = response.data or []
+                if hasattr(response, 'data'):
+                    # Convert database messages to ChatMessage objects
+                    messages = [convert_to_chat_message(msg) for msg in response.data]
                     print(f"Found {len(messages)} direct messages")
                 else:
                     print("No direct messages found or invalid response format")
