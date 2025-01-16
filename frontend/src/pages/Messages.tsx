@@ -73,8 +73,15 @@ export default function Messages() {
           table: 'channels'
         },
         async (payload) => {
-          console.log('Channel change received:', payload)
-          refreshChannels()
+          console.log('Channel change received:', {
+            event: payload.eventType,
+            table: 'channels',
+            data: payload.new || payload.old,
+            timestamp: new Date().toISOString()
+          })
+          console.log('Refreshing channels after change')
+          await refreshChannels()
+          console.log('Channels refreshed')
         }
       )
       .on(
@@ -86,12 +93,33 @@ export default function Messages() {
           filter: `user_id=eq.${currentUser.id}`
         },
         async (payload) => {
-          console.log('Channel member change received:', payload)
-          refreshChannels()
+          console.log('Channel member change received:', {
+            event: payload.eventType,
+            table: 'channel_members',
+            data: payload.new || payload.old,
+            userId: currentUser.id,
+            timestamp: new Date().toISOString()
+          })
+          
+          // If this is a new member addition and it's for the current user
+          if (payload.eventType === 'INSERT' && payload.new?.user_id === currentUser.id) {
+            console.log('New channel membership detected:', {
+              channelId: payload.new.channel_id,
+              timestamp: new Date().toISOString()
+            })
+          }
+          
+          console.log('Refreshing channels after member change')
+          await refreshChannels()
+          console.log('Channels refreshed after member change')
         }
       )
       .subscribe((status) => {
-        console.log('Channel subscription status:', status)
+        console.log('Channel subscription status:', {
+          status,
+          timestamp: new Date().toISOString(),
+          userId: currentUser.id
+        })
       })
 
     // Subscribe to direct message changes
@@ -103,11 +131,18 @@ export default function Messages() {
           event: '*',
           schema: 'public',
           table: 'direct_messages',
-          filter: `user_id=eq.${currentUser.id}`
+          filter: `sender_id=eq.${currentUser.id}`,
         },
         async (payload) => {
-          console.log('DM change received:', payload)
-          refreshDirectMessages()
+          console.log('DM sender change received:', {
+            event: payload.eventType,
+            table: 'direct_messages',
+            data: payload.new || payload.old,
+            timestamp: new Date().toISOString()
+          })
+          console.log('Refreshing DMs after sender change')
+          await refreshDirectMessages()
+          console.log('DMs refreshed after sender change')
         }
       )
       .on(
@@ -115,16 +150,27 @@ export default function Messages() {
         {
           event: '*',
           schema: 'public',
-          table: 'direct_message_members',
-          filter: `user_id=eq.${currentUser.id}`
+          table: 'direct_messages',
+          filter: `receiver_id=eq.${currentUser.id}`,
         },
         async (payload) => {
-          console.log('DM member change received:', payload)
-          refreshDirectMessages()
+          console.log('DM receiver change received:', {
+            event: payload.eventType,
+            table: 'direct_messages',
+            data: payload.new || payload.old,
+            timestamp: new Date().toISOString()
+          })
+          console.log('Refreshing DMs after receiver change')
+          await refreshDirectMessages()
+          console.log('DMs refreshed after receiver change')
         }
       )
       .subscribe((status) => {
-        console.log('DM subscription status:', status)
+        console.log('DM subscription status:', {
+          status,
+          timestamp: new Date().toISOString(),
+          channelId: currentUser.id
+        })
       })
 
     // Subscribe to status changes
@@ -148,7 +194,10 @@ export default function Messages() {
       })
 
     return () => {
-      console.log('Cleaning up subscriptions')
+      console.log('Cleaning up subscriptions:', {
+        timestamp: new Date().toISOString(),
+        userId: currentUser.id
+      })
       channelChanges.unsubscribe()
       dmChanges.unsubscribe()
       statusChanges.unsubscribe()
@@ -181,6 +230,23 @@ export default function Messages() {
         console.log('Channel created:', channel)
         
         if (channel) {
+          // Add creator as channel member
+          console.log('Adding creator as channel member')
+          const { error: memberError } = await supabase
+            .from('channel_members')
+            .insert({
+              channel_id: channel.id,
+              user_id: currentUser.id,
+              profile_id: currentUser.id
+            })
+
+          if (memberError) {
+            console.error('Failed to add creator as member:', memberError)
+            // Continue anyway as the channel was created
+          } else {
+            console.log('Creator added as channel member')
+          }
+
           setCurrentChat({
             type: 'channel',
             id: channel.id,
@@ -316,12 +382,34 @@ export default function Messages() {
         <div className="mb-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-bold text-black">Channels</h2>
-            <button
-              onClick={handleCreateChannel}
-              className="px-3 py-1 bg-indigo-600 text-white rounded hover:bg-indigo-700"
-            >
-              + New
-            </button>
+            <div className="flex items-center space-x-2">
+              <button
+                onClick={() => refreshChannels()}
+                className="p-1.5 bg-indigo-600 text-white rounded hover:bg-indigo-700"
+                aria-label="Reload channels"
+              >
+                <svg
+                  className="w-5 h-5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                  />
+                </svg>
+              </button>
+              <button
+                onClick={handleCreateChannel}
+                className="px-3 py-1 bg-indigo-600 text-white rounded hover:bg-indigo-700"
+              >
+                + New
+              </button>
+            </div>
           </div>
 
           {channelsLoading ? (

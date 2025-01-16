@@ -5,6 +5,7 @@ import { MessageWithUser } from '../types/models';
 import { AnyMessage, getMessageProcessor, MessageType } from '../utils/MessageProcessor';
 import { supabase } from '../lib/supabaseClient';
 import { RealtimeChannel, RealtimePostgresChangesPayload } from '@supabase/supabase-js';
+import { useMessageCache } from './useMessageCache';
 
 const MESSAGES_PER_PAGE = 50;
 
@@ -38,6 +39,85 @@ export function useRealtimeMessages({
   const lastMessageTimestamp = useRef<string | null>(null);
   const lastChannelId = useRef<string | null>(null);
   const lastChatType = useRef<MessageType | null>(null);
+  const { handleRealtimeUpdate } = useMessageCache();
+
+  // Helper function to get message timestamp
+  const getMessageTimestamp = useCallback((message: MessageWithUser): string => {
+    if (!message) {
+      console.warn('Trying to get timestamp of undefined message');
+      return new Date().toISOString();
+    }
+
+    // For DMs, use created_at
+    if (chatType === 'dm') {
+      if (message.created_at) {
+        return message.created_at;
+      }
+      console.warn('DM missing created_at timestamp:', message.id);
+    } else {
+      // For channel messages, prefer inserted_at
+      if (message.inserted_at) {
+        return message.inserted_at;
+      }
+      console.warn('Channel message missing inserted_at timestamp:', message.id);
+    }
+    
+    // Fallback chain for channel messages
+    if (message.created_at) return message.created_at;
+    if (message.updated_at) return message.updated_at;
+    
+    console.warn('No valid timestamp found for message:', message.id);
+    return new Date().toISOString();
+  }, [chatType]);
+
+  // Helper function to sort messages
+  const sortMessages = useCallback((messages: MessageWithUser[]): MessageWithUser[] => {
+    return [...messages].sort((a, b) => {
+      const aTime = getMessageTimestamp(a);
+      const bTime = getMessageTimestamp(b);
+      
+      // Validate timestamp strings
+      if (!aTime || typeof aTime !== 'string') {
+        console.error('Invalid timestamp format for message:', a.id);
+        return 1;
+      }
+      
+      if (!bTime || typeof bTime !== 'string') {
+        console.error('Invalid timestamp format for message:', b.id);
+        return -1;
+      }
+
+      // Try to parse the ISO strings
+      let aDate: Date, bDate: Date;
+      try {
+        aDate = new Date(aTime);
+        bDate = new Date(bTime);
+      } catch (error) {
+        console.error('Error parsing dates for messages:', a.id, b.id);
+        return 0;
+      }
+      
+      if (isNaN(aDate.getTime())) {
+        console.error('Invalid date for message:', a.id);
+        return 1;
+      }
+      if (isNaN(bDate.getTime())) {
+        console.error('Invalid date for message:', b.id);
+        return -1;
+      }
+      
+      return aDate.getTime() - bDate.getTime();
+    });
+  }, [getMessageTimestamp]);
+
+  // Update message state with proper sorting
+  const updateMessages = useCallback((newMessage: MessageWithUser, currentMessages: MessageWithUser[]) => {
+    // Check if message already exists
+    if (currentMessages.some(msg => msg.id === newMessage.id)) {
+      return currentMessages;
+    }
+    return sortMessages([...currentMessages, newMessage]);
+  }, [sortMessages]);
 
   // Reset states when channel changes
   useEffect(() => {
@@ -85,6 +165,13 @@ export function useRealtimeMessages({
       
       const timestampField = chatType === 'dm' ? 'created_at' : 'inserted_at';
       
+      console.log('Fetching messages:', {
+        channelId,
+        chatType,
+        timestampField,
+        olderThan
+      });
+
       const query = chatType === 'dm'
         ? supabase
             .from('direct_messages')
@@ -115,38 +202,54 @@ export function useRealtimeMessages({
       const { data, error: fetchError } = await query;
 
       if (fetchError) {
+        console.error('Error fetching messages:', fetchError);
         setError(fetchError);
         return;
       }
 
       const newMessages = data as MessageWithUser[];
       
+      console.log('Messages fetched:', {
+        count: newMessages.length,
+        messages: newMessages.map(msg => ({
+          id: msg.id,
+          content: msg.content,
+          timestamps: {
+            created_at: msg.created_at,
+            inserted_at: msg.inserted_at,
+            updated_at: msg.updated_at
+          }
+        }))
+      });
+
       if (newMessages.length < MESSAGES_PER_PAGE) {
         setHasMore(false);
       }
 
       if (newMessages.length > 0) {
-        lastMessageTimestamp.current = chatType === 'dm' 
-          ? newMessages[0].created_at || null
-          : newMessages[0].inserted_at || null;
+        // Use our helper to get the timestamp of the first message
+        lastMessageTimestamp.current = getMessageTimestamp(newMessages[0]);
+        console.log('Updated last message timestamp:', lastMessageTimestamp.current);
       }
 
       // Only update messages if we're still on the same channel
       if (lastChannelId.current === channelId && lastChatType.current === chatType) {
-        setMessages(prev => 
-          olderThan 
+        setMessages(prev => {
+          const combinedMessages = olderThan 
             ? [...newMessages, ...prev]
-            : newMessages
-        );
+            : newMessages;
+          return sortMessages(combinedMessages);
+        });
       }
       
       setError(null);
     } catch (err) {
+      console.error('Failed to fetch messages:', err);
       setError(err instanceof Error ? err : new Error('Failed to fetch messages'));
     } finally {
       setIsLoading(false);
     }
-  }, [channelId, chatType, searchQuery, user, parentId]);
+  }, [channelId, chatType, searchQuery, user, parentId, getMessageTimestamp, sortMessages]);
 
   // Separate effect to handle initial message loading
   useEffect(() => {
@@ -251,143 +354,124 @@ export function useRealtimeMessages({
 
   // Message subscription setup
   useEffect(() => {
-    if (!user || !channelId || !memberData) {
-      console.log('Skipping message subscription setup:', {
-        hasUser: !!user,
-        hasChannelId: !!channelId,
-        hasMemberData: !!memberData
-      });
-      return;
-    }
+    if (!user || !channelId) return;
 
     const table = chatType === 'dm' ? 'direct_messages' : 'messages';
-    const subscriptionId = `${table}:${channelId}:${parentId || 'main'}`;
-    
-    console.log('Setting up message subscription:', {
-      subscriptionId,
-      table,
-      channelId,
-      parentId,
-      chatType
-    });
+    const subscriptionId = `realtime:${table}:${channelId}`;
+    let isCurrentSubscription = true;
 
     const channel = supabase
       .channel(subscriptionId)
-      .on<PostgresChanges>(
+      .on(
         'postgres_changes',
         {
           event: 'INSERT',
           schema: 'public',
           table,
-          filter: `channel_id=eq.${channelId}`
+          filter: `channel_id=eq.${channelId}`,
+          broadcast: { self: true }
         },
-        async (payload: PostgresChanges) => {
-          console.log('Message INSERT event received:', payload);
-          const newMessage = payload.new;
+        async (payload) => {
+          if (!isCurrentSubscription) return;
           
-          // For DMs, try to fetch the user data if not included
-          if (chatType === 'dm') {
-            const { data: messageWithUser, error } = await supabase
+          const messageId = payload.new.id;
+          const query = chatType === 'dm'
+            ? supabase
               .from('direct_messages')
-              .select('*, user:profiles(*)')
-              .eq('id', newMessage.id)
-              .single();
-
-            console.log('Fetched DM message with user:', { messageWithUser, error });
-
-            if (!error && messageWithUser) {
-              setMessages(prev => {
-                if (prev.some(msg => msg.id === messageWithUser.id)) {
-                  console.log('Message already exists, skipping');
-                  return prev;
-                }
-                console.log('Adding new DM message');
-                const allMessages = [...prev, messageWithUser];
-                return allMessages.sort((a, b) => 
-                  new Date(a.created_at || '').getTime() - new Date(b.created_at || '').getTime()
-                );
-              });
-            }
-          } else {
-            // For regular channels
-            const { data: messageWithProfile, error } = await supabase
+                .select('*, user:profiles(*), attachments')
+                .eq('id', messageId)
+            : supabase
               .from('messages')
-              .select('*, profile:profiles(*)')
-              .eq('id', newMessage.id)
-              .single();
+                .select('*, profile:profiles(*), attachments')
+                .eq('id', messageId);
 
-            console.log('Fetched channel message with profile:', { messageWithProfile, error });
+          const { data: messageWithUser, error } = await query.single();
 
-            if (!error && messageWithProfile) {
-              setMessages(prev => {
-                if (prev.some(msg => msg.id === messageWithProfile.id)) {
-                  console.log('Message already exists, skipping');
-                  return prev;
-                }
-                console.log('Adding new channel message');
-                const allMessages = [...prev, messageWithProfile];
-                return allMessages.sort((a, b) => 
-                  new Date(a.inserted_at || '').getTime() - new Date(b.inserted_at || '').getTime()
-                );
-              });
-            }
+          if (!isCurrentSubscription) return;
+
+          if (error) {
+            console.error('Error fetching message details:', error);
+            return;
+          }
+
+          if (messageWithUser) {
+            handleRealtimeUpdate(messageWithUser);
+            setMessages(prev => updateMessages(messageWithUser, prev));
           }
         }
       )
-      .on<PostgresChanges>(
-        'postgres_changes',
-        {
-          event: 'DELETE',
-          schema: 'public',
-          table,
-          filter: `channel_id=eq.${channelId}`
-        },
-        (payload: PostgresChanges) => {
-          const deletedMessage = payload.old as MessageWithUser;
-          setMessages(prev => prev.filter(msg => msg.id !== deletedMessage.id));
-        }
-      )
-      .on<PostgresChanges>(
+      .on(
         'postgres_changes',
         {
           event: 'UPDATE',
           schema: 'public',
           table,
-          filter: `channel_id=eq.${channelId}`
+          filter: `channel_id=eq.${channelId}`,
+          broadcast: { self: true }
         },
-        async (payload: PostgresChanges) => {
-          const updatedMessage = payload.new;
-          const { data: messageWithUser, error } = await supabase
-            .from(table)
-            .select(chatType === 'dm' ? '*, user:profiles(*)' : '*, profile:profiles(*)')
-            .eq('id', updatedMessage.id)
-            .single();
+        async (payload) => {
+          if (!isCurrentSubscription) return;
+          
+          const messageId = payload.new.id;
+          const query = chatType === 'dm'
+            ? supabase
+                .from('direct_messages')
+                .select('*, user:profiles(*), attachments')
+                .eq('id', messageId)
+            : supabase
+                .from('messages')
+                .select('*, profile:profiles(*), attachments')
+                .eq('id', messageId);
 
-          if (!error && messageWithUser) {
-            setMessages(prev =>
-              prev.map(msg =>
-                msg.id === messageWithUser.id ? messageWithUser : msg
-              )
-            );
+          const { data: messageWithUser, error } = await query.single();
+
+          if (!isCurrentSubscription) return;
+
+          if (error) {
+            console.error('Error fetching updated message:', error);
+            return;
+          }
+
+          if (messageWithUser) {
+            handleRealtimeUpdate(messageWithUser);
+            setMessages(prev => {
+              const existing = prev.findIndex(msg => msg.id === messageWithUser.id);
+              if (existing >= 0) {
+                const updated = [...prev];
+                updated[existing] = messageWithUser;
+                return updated;
+              }
+              return prev;
+            });
           }
         }
       )
+      .on(
+        'postgres_changes',
+        {
+          event: 'DELETE',
+          schema: 'public',
+          table,
+          filter: `channel_id=eq.${channelId}`,
+          broadcast: { self: true }
+        },
+        (payload) => {
+          if (!isCurrentSubscription) return;
+          setMessages(prev => prev.filter(msg => msg.id !== payload.old.id));
+        }
+      )
       .subscribe((status, err) => {
-        console.log('Message subscription status:', status, err || 'No error');
+        if (!isCurrentSubscription) return;
         if (err) {
           console.error('Message subscription error:', err);
         }
       });
 
-    subscriptionRef.current = channel;
-
     return () => {
-      console.log('Cleaning up message subscription:', subscriptionId);
-      if (subscriptionRef.current) {
-        supabase.removeChannel(subscriptionRef.current);
-      }
+      isCurrentSubscription = false;
+      channel.unsubscribe();
     };
-  }, [user, channelId, chatType, memberData, parentId]);
+  }, [user?.id, channelId, chatType, updateMessages, handleRealtimeUpdate]);
 
   const sendMessage = useCallback(
     async (
@@ -405,45 +489,17 @@ export function useRealtimeMessages({
 
       const effectiveParentId = replyToId || parentId || null;
 
-      if (chatType === 'dm') {
-        const messageData = {
-            channel_id: channelId,
-            user_id: user.id,
-          profile_id: memberData.profile_id,
-            content: trimmedContent || ' ',
-          parent_id: effectiveParentId,
-            attachments: attachmentUrl
-              ? [
-                  {
-                    url: attachmentUrl,
-                    file_path: attachmentUrl,
-                    filename:
-                      fileMetadata?.filename ||
-                      attachmentUrl.split('/').pop() ||
-                      'attachment',
-                    content_type:
-                      fileMetadata?.contentType || 'application/octet-stream',
-                    size: fileMetadata?.size || 0
-                  }
-                ]
-              : undefined
-        };
-
-        const { data, error } = await supabase
-          .from('direct_messages')
-          .insert(messageData)
-          .select('*, user:profiles(*)')
-          .single();
-
-        if (error) throw error;
-        return data;
-      } else {
-        const messageData = {
+      try {
+        let result;
+        if (chatType === 'dm') {
+          const messageData = {
             channel_id: channelId,
             user_id: user.id,
             profile_id: memberData.profile_id,
-          parent_id: effectiveParentId,
             content: trimmedContent || ' ',
+            parent_id: effectiveParentId,
+            created_at: now,
+            updated_at: now,
             attachments: attachmentUrl
               ? [
                   {
@@ -458,22 +514,72 @@ export function useRealtimeMessages({
                     size: fileMetadata?.size || 0
                   }
                 ]
-              : undefined,
+              : []
+          };
+
+          const { data, error } = await supabase
+            .from('direct_messages')
+            .insert(messageData)
+            .select('*, user:profiles(*)')
+            .single();
+
+          if (error) throw error;
+          result = data;
+        } else {
+          const messageData = {
+            channel_id: channelId,
+            user_id: user.id,
+            profile_id: memberData.profile_id,
+            content: trimmedContent || ' ',
+            parent_id: effectiveParentId,
             inserted_at: now,
-            updated_at: now
-        };
+            updated_at: now,
+            attachments: attachmentUrl
+              ? [
+                  {
+                    url: attachmentUrl,
+                    file_path: attachmentUrl,
+                    filename:
+                      fileMetadata?.filename ||
+                      attachmentUrl.split('/').pop() ||
+                      'attachment',
+                    content_type:
+                      fileMetadata?.contentType || 'application/octet-stream',
+                    size: fileMetadata?.size || 0
+                  }
+                ]
+              : []
+          };
 
-        const { data, error } = await supabase
-          .from('messages')
-          .insert(messageData)
-          .select('*, profile:profiles(*)')
-          .single();
+          const { data, error } = await supabase
+            .from('messages')
+            .insert(messageData)
+            .select('*, profile:profiles(*)')
+            .single();
 
-        if (error) throw error;
-        return data;
+          if (error) throw error;
+          result = data;
+        }
+
+        console.log('Message sent successfully:', {
+          messageId: result.id,
+          channelId,
+          timestamp: now,
+          messageTimestamp: getMessageTimestamp(result)
+        });
+
+        return result;
+      } catch (error) {
+        console.error('Failed to send message:', {
+          error,
+          channelId,
+          chatType,
+          timestamp: new Date().toISOString()
+        });
+        throw error;
       }
     },
-    [user, channelId, chatType, memberData, isMembershipLoading, parentId]
+    [user, channelId, chatType, memberData, isMembershipLoading, parentId, getMessageTimestamp]
   );
 
   return {

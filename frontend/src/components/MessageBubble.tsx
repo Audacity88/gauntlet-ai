@@ -6,6 +6,20 @@ import { ErrorBoundary } from './ErrorBoundary';
 import { useStatusStore } from '../stores/statusStore';
 import { FileAttachment } from './FileAttachment';
 
+// Helper function to get the correct timestamp for a message
+const getMessageTimestamp = (message: MessageWithUser | DirectMessageWithUser): string => {
+  // For DMs, use created_at
+  if ('message' in message) {
+    return message.created_at;
+  }
+  // For channel messages, prefer inserted_at
+  if (message.inserted_at) {
+    return message.inserted_at;
+  }
+  // Fallback to created_at or updated_at
+  return message.created_at || message.updated_at || new Date().toISOString();
+};
+
 interface MessageError {
   code: string;
   message: string;
@@ -46,6 +60,10 @@ const MessageBubbleContent = memo(function MessageBubbleContent({
     full_name: 'Unknown User',
     avatar_url: null
   };
+
+  // Get the correct timestamp for the message
+  const timestamp = getMessageTimestamp(message);
+  const messageDate = new Date(timestamp);
 
   const handleEdit = () => {
     setIsEditing(true);
@@ -133,7 +151,7 @@ const MessageBubbleContent = memo(function MessageBubbleContent({
           >
             <span className="font-medium text-gray-900">{user.username}</span>
             <span className="text-sm text-gray-500">
-              {new Date(message.created_at).toLocaleString(undefined, {
+              {messageDate.toLocaleString(undefined, {
                 month: 'short',
                 day: 'numeric',
                 hour: 'numeric',
