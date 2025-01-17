@@ -28,6 +28,14 @@ interface MessageSender {
   full_name: string;
 }
 
+interface MessageDBResponse {
+  content: string;
+  inserted_at: string;
+  profiles: {
+    username: string;
+  }[];
+}
+
 export function AvatarChat({ className = '' }: AvatarChatProps) {
   const [targetUser, setTargetUser] = useState<TargetUser | null>(null);
   const [messageId, setMessageId] = useState<string | null>(null);
@@ -64,18 +72,18 @@ export function AvatarChat({ className = '' }: AvatarChatProps) {
     try {
       const { data, error } = await supabase
         .from('messages')
-        .select('content, inserted_at')
+        .select('content, inserted_at, profiles(username)')
         .eq('user_id', userId)
         .order('inserted_at', { ascending: false })
-        .limit(50);
+        // .limit(50);
 
       if (error) throw error;
       
       // Convert the data to match MessageHistory interface
-      const formattedData: MessageHistory[] = (data || []).map(msg => ({
+      const formattedData: MessageHistory[] = ((data || []) as MessageDBResponse[]).map(msg => ({
         content: msg.content,
         created_at: msg.inserted_at,
-        username: msg.inserted_at
+        username: msg.profiles[0]?.username || 'unknown'
       }));
       
       setMessageHistory(formattedData);
@@ -91,6 +99,9 @@ export function AvatarChat({ className = '' }: AvatarChatProps) {
       setTargetUser(null); // Reset current user first
       setMessageHistory([]); // Reset message history
       setChatError(null);
+
+      // Fetch user's message history first
+      await fetchMessageHistory(user.id);
 
       // Create or get existing DM channel
       const channelId = await createDirectMessage(user.username);
@@ -123,7 +134,8 @@ export function AvatarChat({ className = '' }: AvatarChatProps) {
         // Make API request to get user summary
         const requestBody = {
           target_user_id: user.id,
-          mode: 'direct'
+          mode: 'direct',
+          message_history: messageHistory // Include message history in the request
         };
         console.log('Sending user summary request:', requestBody);
         
@@ -162,7 +174,7 @@ export function AvatarChat({ className = '' }: AvatarChatProps) {
     } finally {
       setIsLoading(false);
     }
-  }, [createDirectMessage]);
+  }, [createDirectMessage, fetchMessageHistory, messageHistory]);
 
   const formatMessageHistory = useCallback((messages: MessageHistory[]) => {
     return messages.map(msg => ({

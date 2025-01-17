@@ -334,29 +334,28 @@ export default function Messages() {
               ) : (
                 <div className="space-y-2 max-h-[250px] overflow-y-auto scrollbar-none hover:scrollbar-thin scrollbar-track-transparent scrollbar-thumb-indigo-600/40 hover:scrollbar-thumb-indigo-600/60 [&::-webkit-scrollbar-thumb]:rounded [&::-webkit-scrollbar-thumb]:min-h-[40px]">
                   {Array.from(channels.values()).map(channel => (
-                    <div 
+                    <button
                       key={channel.id}
-                      className="flex items-center justify-between group"
+                      onClick={() => handleChannelClick(channel)}
+                      className={`w-full text-left px-2 py-1 rounded text-black bg-indigo-50 hover:bg-indigo-100 group ${
+                        currentChat?.id === channel.id ? 'bg-indigo-100' : ''
+                      }`}
                     >
-                      <button
-                        onClick={() => handleChannelClick(channel)}
-                        className={`flex-1 text-left px-2 py-1 rounded text-black bg-indigo-50 hover:bg-indigo-100 ${
-                          currentChat?.id === channel.id
-                            ? 'bg-indigo-100'
-                            : ''
-                        }`}
-                      >
-                        # {channel.slug}
-                      </button>
-                      {currentUser && channel.created_by === currentUser.id && (
-                        <button
-                          onClick={() => handleDeleteChannel(channel.id)}
-                          className="hidden group-hover:block px-2 py-1 text-red-500 hover:text-red-700 bg-indigo-50 hover:bg-indigo-100 rounded-r"
-                        >
-                          ×
-                        </button>
-                      )}
-                    </div>
+                      <div className="flex items-center justify-between">
+                        <span># {channel.slug}</span>
+                        {currentUser && channel.created_by === currentUser.id && (
+                          <span
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteChannel(channel.id);
+                            }}
+                            className="hidden group-hover:block text-red-500 hover:text-red-700"
+                          >
+                            ×
+                          </span>
+                        )}
+                      </div>
+                    </button>
                   ))}
                 </div>
               )}
