@@ -35,12 +35,13 @@ export function AvatarChat({ className = '' }: AvatarChatProps) {
   const [messageHistory, setMessageHistory] = useState<MessageHistory[]>([]);
   const [streamedResponse, setStreamedResponse] = useState<string>('');
   const [chatError, setChatError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
   const { user: currentUser } = useAuth();
   const { createDirectMessage } = useDirectMessages();
 
   const {
     messages,
-    isLoading,
+    isLoading: messagesIsLoading,
     error: messagesError,
     sendMessage
   } = useRealtimeMessages({
@@ -76,14 +77,49 @@ export function AvatarChat({ className = '' }: AvatarChatProps) {
 
   const handleUserSelect = useCallback(async (user: User) => {
     try {
+      setIsLoading(true);
       setTargetUser(null); // Reset current user first
       setMessageHistory([]); // Reset message history
+      setChatError(null);
 
       // Fetch user's message history
       await fetchMessageHistory(user.id);
 
       // Create or get existing DM channel
       const channelId = await createDirectMessage(user.username);
+
+      // Get current session for API request
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError || !session?.access_token) {
+        throw new Error('No active session or missing access token');
+      }
+
+      // Make API request to get user summary
+      const requestBody = {
+        target_user_id: user.id,
+        mode: 'direct'
+      };
+      console.log('Sending user summary request:', requestBody);
+      
+      const response = await fetch('http://localhost:8000/api/chat/user_summary', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify(requestBody)
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Error getting user summary:', {
+          status: response.status,
+          statusText: response.statusText,
+          error: errorText,
+          requestBody
+        });
+        throw new Error(errorText);
+      }
 
       // Wait for channel to be fully created and members added
       await new Promise(resolve => setTimeout(resolve, 500));
@@ -92,7 +128,10 @@ export function AvatarChat({ className = '' }: AvatarChatProps) {
       setTargetUser({ ...user, channelId });
       setMessageId(null); // Reset message context
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to create direct message');
+      console.error('Error in handleUserSelect:', err);
+      setChatError(err instanceof Error ? err.message : 'Failed to create direct message');
+    } finally {
+      setIsLoading(false);
     }
   }, [createDirectMessage, fetchMessageHistory]);
 
@@ -338,6 +377,8 @@ export function AvatarChat({ className = '' }: AvatarChatProps) {
                 <p>Message ID: {messageId || 'None'}</p>
                 <p>Streaming: {isStreaming ? 'On' : 'Off'}</p>
                 <p>History: {messageHistory.length} messages</p>
+                {isLoading && <p className="text-indigo-600">Loading user summary...</p>}
+                {chatError && <p className="text-red-500">Error: {chatError}</p>}
               </div>
             </div>
           </div>
@@ -346,7 +387,11 @@ export function AvatarChat({ className = '' }: AvatarChatProps) {
 
       {/* Chat Area */}
       <div className="flex-1 flex flex-col overflow-hidden">
-        {targetUser ? (
+        {isLoading ? (
+          <div className="flex-1 flex items-center justify-center text-gray-500">
+            Loading user summary...
+          </div>
+        ) : targetUser ? (
           <>
             <div className="flex-1 overflow-y-auto">
               <MessageList

@@ -181,8 +181,7 @@ export function useRealtimeMessages({
         : supabase
             .from('messages')
             .select('*, profile:profiles(*), attachments')
-            .eq('channel_id', channelId)
-            .is('deleted_at', null);
+            .eq('channel_id', channelId);
 
       // Handle thread filtering consistently for both message types
       if (parentId) {
@@ -341,128 +340,185 @@ export function useRealtimeMessages({
     const subscriptionId = `realtime:${table}:${channelId}`;
     let isCurrentSubscription = true;
 
+    // Clean up any existing subscription with the same ID
+    if (subscriptionRef.current) {
+      console.log('Cleaning up existing subscription:', subscriptionId);
+      subscriptionRef.current.unsubscribe();
+    }
+
+    console.log('Setting up realtime subscription:', {
+      table,
+      channelId,
+      subscriptionId,
+      chatType,
+      parentId
+    });
+
     const channel = supabase
       .channel(subscriptionId)
       .on(
         'postgres_changes' as any,
         {
-          event: 'INSERT',
+          event: '*',
           schema: 'public',
           table,
-          filter: `channel_id=eq.${channelId}`,
-          broadcast: { self: true }
+          filter: chatType === 'dm' 
+            ? `channel_id=eq.${channelId}` 
+            : `channel_id=eq.${channelId}`
         },
-        async (payload) => {
-          if (!isCurrentSubscription) return;
-          
-          const messageId = payload.new.id;
-          const query = chatType === 'dm'
-            ? supabase
-              .from('direct_messages')
-                .select('*, user:profiles(*), attachments')
-                .eq('id', messageId)
-                .is('deleted_at', null)
-            : supabase
-              .from('messages')
-                .select('*, profile:profiles(*), attachments')
-                .eq('id', messageId)
-                .is('deleted_at', null);
-
-          const { data: messageWithUser, error } = await query.single();
-
-          if (!isCurrentSubscription) return;
-
-          if (error) {
-            console.error('Error fetching message details:', error);
+        async (payload: RealtimePostgresChangesPayload<any>) => {
+          if (!isCurrentSubscription) {
+            console.log('Ignoring event for old subscription');
             return;
           }
 
-          if (messageWithUser) {
-            handleRealtimeUpdate(messageWithUser);
-            setMessages(prev => updateMessages(messageWithUser, prev));
-          }
-        }
-      )
-      .on(
-        'postgres_changes' as any,
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table,
-          filter: `channel_id=eq.${channelId}`,
-          broadcast: { self: true }
-        },
-        async (payload) => {
-          if (!isCurrentSubscription) return;
-          
-          // If the message was soft deleted, remove it from the UI
-          if (payload.new.deleted_at) {
-            setMessages(prev => prev.filter(msg => msg.id !== payload.new.id));
-            return;
-          }
-
-          const messageId = payload.new.id;
-          const query = chatType === 'dm'
-            ? supabase
-                .from('direct_messages')
-                .select('*, user:profiles(*), attachments')
-                .eq('id', messageId)
-                .is('deleted_at', null)
-            : supabase
-                .from('messages')
-                .select('*, profile:profiles(*), attachments')
-                .eq('id', messageId)
-                .is('deleted_at', null);
-
-          const { data: messageWithUser, error } = await query.single();
-
-          if (!isCurrentSubscription) return;
-
-          if (error) {
-            console.error('Error fetching updated message:', error);
-            return;
-          }
-
-          if (messageWithUser) {
-            handleRealtimeUpdate(messageWithUser);
-            setMessages(prev => {
-              const existing = prev.findIndex(msg => msg.id === messageWithUser.id);
-              if (existing >= 0) {
-                const updated = [...prev];
-                updated[existing] = messageWithUser;
-                return updated;
-              }
-              return prev;
+          try {
+            const { eventType } = payload;
+            console.log('Received realtime event:', { 
+              eventType, 
+              payload,
+              channelId,
+              messageId: payload.new?.id,
+              content: payload.new?.content,
+              timestamp: new Date().toISOString()
             });
+
+            // For channel messages, check parent_id after receiving the event
+            if (chatType === 'channel' && parentId) {
+              if (payload.new?.parent_id !== parentId) {
+                console.log('Ignoring message - wrong parent_id');
+                return;
+              }
+            } else if (chatType === 'channel' && !parentId && payload.new?.parent_id) {
+              console.log('Ignoring thread message');
+              return;
+            }
+
+            // Handle message deletion
+            if (eventType === 'DELETE') {
+              console.log('Processing DELETE event for message:', payload.old.id);
+              setMessages(prev => prev.filter(msg => msg.id !== payload.old.id));
+              return;
+            }
+
+            // Skip if message was soft deleted
+            if (eventType === 'UPDATE' && payload.new?.deleted_at) {
+              console.log('Processing soft DELETE for message:', payload.new.id);
+              setMessages(prev => prev.filter(msg => msg.id !== payload.new.id));
+              return;
+            }
+
+            // For INSERT and UPDATE, fetch the full message data
+            const messageId = payload.new.id;
+            console.log('Fetching full message data for:', messageId);
+            
+            const query = chatType === 'dm'
+              ? supabase
+                  .from('direct_messages')
+                  .select(`
+                    *,
+                    profile:profiles!direct_messages_profile_id_fkey(
+                      id,
+                      username,
+                      full_name,
+                      avatar_url
+                    )
+                  `)
+                  .eq('id', messageId)
+                  .is('deleted_at', null)
+              : supabase
+                  .from('messages')
+                  .select(`
+                    *,
+                    profile:profiles(*)
+                  `)
+                  .eq('id', messageId);
+
+            const { data: messageWithUser, error } = await query.single();
+
+            if (error) {
+              console.error('Error fetching message details:', error);
+              return;
+            }
+
+            if (messageWithUser) {
+              console.log('Successfully fetched message details:', {
+                messageId: messageWithUser.id,
+                content: messageWithUser.content,
+                profile: messageWithUser.profile
+              });
+
+              // For channel messages, ensure profile is mapped to user
+              const processedMessage = chatType === 'dm' 
+                ? messageWithUser 
+                : {
+                    ...messageWithUser,
+                    user: messageWithUser.profile
+                  };
+
+              console.log('Processed message for update:', {
+                id: processedMessage.id,
+                content: processedMessage.content,
+                user: processedMessage.user || processedMessage.profile
+              });
+
+              handleRealtimeUpdate(processedMessage);
+              
+              if (eventType === 'INSERT') {
+                setMessages(prev => {
+                  // Avoid duplicate messages
+                  if (prev.some(msg => msg.id === processedMessage.id)) {
+                    console.log('Skipping duplicate message:', processedMessage.id);
+                    return prev;
+                  }
+                  const updated = updateMessages(processedMessage, prev);
+                  console.log('Updated messages after INSERT:', {
+                    previousCount: prev.length,
+                    newCount: updated.length,
+                    messageId: processedMessage.id,
+                    lastMessage: updated[updated.length - 1]
+                  });
+                  return updated;
+                });
+              } else if (eventType === 'UPDATE') {
+                setMessages(prev => {
+                  const existing = prev.findIndex(msg => msg.id === processedMessage.id);
+                  if (existing >= 0) {
+                    const updated = [...prev];
+                    updated[existing] = processedMessage;
+                    console.log('Updated existing message:', processedMessage.id);
+                    return updated;
+                  }
+                  return prev;
+                });
+              }
+            }
+          } catch (err) {
+            console.error('Error processing message update:', err);
           }
-        }
-      )
-      .on(
-        'postgres_changes' as any,
-        {
-          event: 'DELETE',
-          schema: 'public',
-          table,
-          filter: `channel_id=eq.${channelId}`,
-          broadcast: { self: true }
-        },
-        (payload) => {
-          if (!isCurrentSubscription) return;
-          setMessages(prev => prev.filter(msg => msg.id !== payload.old.id));
         }
       )
       .subscribe((status, err) => {
         if (!isCurrentSubscription) return;
         if (err) {
           console.error('Message subscription error:', err);
+        } else {
+          console.log('Subscription status:', status);
         }
       });
 
+    // Store the subscription reference
+    subscriptionRef.current = channel;
+
     return () => {
+      console.log('Cleaning up subscription:', subscriptionId);
       isCurrentSubscription = false;
-      channel.unsubscribe();
+      if (subscriptionRef.current) {
+        subscriptionRef.current.unsubscribe();
+        subscriptionRef.current = null;
+      }
     };
-  }, [user?.id, channelId, chatType, updateMessages, handleRealtimeUpdate]);
+  }, [user?.id, channelId, chatType, parentId, updateMessages, handleRealtimeUpdate]);
 
   const sendMessage = useCallback(
     async (

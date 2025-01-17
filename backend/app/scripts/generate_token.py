@@ -38,7 +38,7 @@ def generate_test_token():
     print("------------------------------------")
     print(token)
     print("\nUse this token in your curl command:")
-    print('curl -X POST "http://localhost:8001/api/chat/send" \\')
+    print('curl -X POST "http://localhost:8000/api/chat/send" \\')
     print('  -H "Authorization: Bearer ' + token + '" \\')
     print('  -H "Content-Type: application/json" \\')
     print('  -d \'{')

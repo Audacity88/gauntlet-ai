@@ -1,32 +1,38 @@
 -- Function to get or create a DM channel and add members
-CREATE OR REPLACE FUNCTION get_or_create_dm_channel(
-    p_channel_id uuid,
+CREATE OR REPLACE FUNCTION find_or_create_dm_channel(
     p_user_id uuid,
-    p_target_user_id uuid
-) RETURNS direct_message_channels AS $$
+    p_other_user_id uuid
+) RETURNS jsonb AS $$
 DECLARE
-    v_channel direct_message_channels;
+    v_channel_id uuid;
 BEGIN
-    -- Try to get existing channel
-    SELECT * INTO v_channel
-    FROM direct_message_channels
-    WHERE id = p_channel_id;
-    
-    -- If channel doesn't exist, create it
-    IF v_channel IS NULL THEN
-        INSERT INTO direct_message_channels (id)
-        VALUES (p_channel_id)
-        RETURNING * INTO v_channel;
-        
+    -- First try to find an existing channel
+    SELECT DISTINCT dm1.channel_id INTO v_channel_id
+    FROM direct_message_members dm1
+    JOIN direct_message_members dm2 ON dm1.channel_id = dm2.channel_id
+    WHERE (dm1.user_id = p_user_id AND dm2.user_id = p_other_user_id)
+       OR (dm1.user_id = p_other_user_id AND dm2.user_id = p_user_id)
+    LIMIT 1;
+
+    -- If no channel exists, create one
+    IF v_channel_id IS NULL THEN
+        -- Create new channel
+        INSERT INTO direct_message_channels (created_at, updated_at)
+        VALUES (NOW(), NOW())
+        RETURNING id INTO v_channel_id;
+
         -- Add both users as members
-        INSERT INTO dm_channel_members (channel_id, user_id)
-        VALUES 
-            (p_channel_id, p_user_id),
-            (p_channel_id, p_target_user_id)
+        INSERT INTO direct_message_members (channel_id, user_id, profile_id)
+        VALUES
+            (v_channel_id, p_user_id, p_user_id),
+            (v_channel_id, p_other_user_id, p_other_user_id)
         ON CONFLICT (channel_id, user_id) DO NOTHING;
     END IF;
-    
-    RETURN v_channel;
+
+    -- Return as a JSON object
+    RETURN jsonb_build_object(
+        'channel_id', v_channel_id
+    );
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
@@ -85,7 +91,7 @@ DECLARE
 BEGIN
     -- Verify the user is a member of the channel
     IF NOT EXISTS (
-        SELECT 1 FROM dm_channel_members
+        SELECT 1 FROM direct_message_members
         WHERE channel_id = p_channel_id AND user_id = p_user_id
     ) THEN
         RAISE EXCEPTION 'User is not a member of this channel';
@@ -100,7 +106,9 @@ BEGIN
         message_type,
         parent_id,
         attachments,
-        metadata
+        metadata,
+        created_at,
+        updated_at
     ) VALUES (
         p_channel_id,
         p_user_id,
@@ -109,7 +117,9 @@ BEGIN
         p_message_type,
         p_parent_id,
         p_attachments,
-        p_metadata
+        p_metadata,
+        NOW(),
+        NOW()
     )
     RETURNING * INTO v_message;
     
@@ -155,7 +165,7 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- Grant execute permissions to authenticated users
-GRANT EXECUTE ON FUNCTION get_or_create_dm_channel TO authenticated;
+GRANT EXECUTE ON FUNCTION find_or_create_dm_channel TO authenticated;
 GRANT EXECUTE ON FUNCTION send_message TO authenticated;
 GRANT EXECUTE ON FUNCTION send_direct_message TO authenticated;
 GRANT EXECUTE ON FUNCTION get_channel_messages TO authenticated;

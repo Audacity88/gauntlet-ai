@@ -171,12 +171,12 @@ export function useDirectMessages() {
         const otherMember = channel.members.find(m => {
           const isOtherUser = m.user_id !== user.id;
           const memberProfile = m.profile;
-          console.log('Checking member:', {
-            memberId: m.user_id,
-            isCurrentUser: m.user_id === user.id,
-            username: memberProfile?.username,
-            fullName: memberProfile?.full_name
-          });
+          // console.log('Checking member:', {
+          //   memberId: m.user_id,
+          //   isCurrentUser: m.user_id === user.id,
+          //   username: memberProfile?.username,
+          //   fullName: memberProfile?.full_name
+          // });
           return isOtherUser;
         });
 
@@ -192,12 +192,12 @@ export function useDirectMessages() {
           avatar_url: otherMember.profile.avatar_url
         };
 
-        console.log('Found other member:', {
-          channelId: channel.id,
-          otherMemberId: otherMember.user_id,
-          username: otherUserProfile.username,
-          fullName: otherUserProfile.full_name
-        });
+        // console.log('Found other member:', {
+        //   channelId: channel.id,
+        //   otherMemberId: otherMember.user_id,
+        //   username: otherUserProfile.username,
+        //   fullName: otherUserProfile.full_name
+        // });
 
         const channelMessages = messages
           ? messages.filter(m => m.channel_id === channel.id).map(m => ({

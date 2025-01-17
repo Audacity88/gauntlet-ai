@@ -6,6 +6,9 @@ from postgrest.exceptions import APIError
 from app.core.database import Client
 from app.models.chat import get_or_create_dm_channel
 from app.models.types import MessageType
+import logging
+
+logger = logging.getLogger(__name__)
 
 class MessageBase(BaseModel):
     content: str
@@ -44,9 +47,7 @@ async def create_message(
     try:
         # Convert Pydantic model to dict if needed
         data = message_data.dict() if hasattr(message_data, 'dict') else message_data
-        
-        # Determine if this is a direct message
-        is_direct = True  # Always use direct messages for avatar chat
+        logger.info(f"Creating message with data: {data}")
         
         # Convert UUIDs in metadata to strings
         metadata = data.get('metadata', {})
@@ -63,48 +64,97 @@ async def create_message(
             "profile_id": str(profile_id),
             "content": data["content"],
             "message_type": data.get("message_type", "text"),
+            "parent_id": str(data["parent_id"]) if data.get("parent_id") else None,
+            "attachments": data.get("attachments", []),
             "metadata": metadata
         }
         
-        # Use direct_messages table for DMs
-        print(f"Creating message in direct_messages table")
-        print(f"Message data: {message_insert}")
+        logger.info(f"Creating message in direct_messages table")
+        logger.info(f"Message data: {message_insert}")
         
         # Insert the message using RPC function for direct messages
-        response = supabase_client.rpc(
-            'send_direct_message',
-            {
-                'p_channel_id': message_insert['channel_id'],
-                'p_user_id': message_insert['user_id'],
-                'p_profile_id': message_insert['profile_id'],
-                'p_content': message_insert['content'],
-                'p_message_type': message_insert['message_type'],
-                'p_metadata': message_insert['metadata']
-            }
-        ).execute()
+        rpc_params = {
+            'p_channel_id': message_insert['channel_id'],
+            'p_user_id': message_insert['user_id'],
+            'p_profile_id': message_insert['profile_id'],
+            'p_content': message_insert['content'],
+            'p_message_type': message_insert['message_type'],
+            'p_parent_id': message_insert['parent_id'],
+            'p_attachments': message_insert['attachments'],
+            'p_metadata': message_insert['metadata']
+        }
+        logger.info(f"Calling send_direct_message with params: {rpc_params}")
         
-        if response and hasattr(response, 'data') and response.data:
-            created_message = response.data
-            print(f"Message created successfully")
+        try:
+            response = supabase_client.rpc(
+                'send_direct_message',
+                rpc_params
+            ).execute()
+            logger.info(f"RPC response: {response.data if hasattr(response, 'data') else response}")
+        except Exception as e:
+            error_msg = str(e)
+            logger.error(f"Database error creating message: {error_msg}")
+            
+            # Check if this is a membership error
+            if "User is not a member of this channel" in error_msg:
+                # Try to add the user as a member first
+                try:
+                    logger.info("Attempting to add user as channel member...")
+                    member_insert = {
+                        "channel_id": rpc_params['p_channel_id'],
+                        "user_id": rpc_params['p_user_id'],
+                        "profile_id": rpc_params['p_profile_id']
+                    }
+                    supabase_client.from_("direct_message_members").insert(member_insert).execute()
+                    
+                    # Try sending the message again
+                    logger.info("Retrying message send after adding member...")
+                    response = supabase_client.rpc(
+                        'send_direct_message',
+                        rpc_params
+                    ).execute()
+                except Exception as inner_e:
+                    logger.error(f"Error adding member and retrying: {inner_e}")
+                    return None
+            else:
+                return None
+
+        if response and hasattr(response, 'data'):
+            # Handle both single object and list responses
+            created_message = response.data[0] if isinstance(response.data, list) else response.data
+            
+            # If we got a channel_id response instead of a message, that means something went wrong
+            if isinstance(created_message, dict) and 'channel_id' in created_message and len(created_message) == 1:
+                logger.error(f"Received channel_id instead of message: {created_message}")
+                return None
+                
+            logger.info(f"Message created successfully: {created_message}")
             
             # Convert the response data to a Message object
-            return Message(
-                id=UUID(created_message['id']),
-                user_id=UUID(created_message['user_id']),
-                profile_id=UUID(created_message['profile_id']),
-                content=created_message['content'],
-                message_type=MessageType(created_message.get('message_type', 'text')),
-                channel_id=UUID(created_message['channel_id']),
-                metadata=created_message.get('metadata'),
-                inserted_at=datetime.fromisoformat(created_message['created_at'].replace('Z', '+00:00')),
-                updated_at=datetime.fromisoformat(created_message['updated_at'].replace('Z', '+00:00')) if created_message.get('updated_at') else None
-            )
+            try:
+                return Message(
+                    id=UUID(created_message['id']),
+                    user_id=UUID(created_message['user_id']),
+                    profile_id=UUID(created_message['profile_id']),
+                    content=created_message['content'],
+                    message_type=MessageType(created_message.get('message_type', 'text')),
+                    channel_id=UUID(created_message['channel_id']),
+                    parent_id=UUID(created_message['parent_id']) if created_message.get('parent_id') else None,
+                    attachments=created_message.get('attachments', []),
+                    metadata=created_message.get('metadata', {}),
+                    inserted_at=datetime.fromisoformat(created_message['created_at'].replace('Z', '+00:00')),
+                    updated_at=datetime.fromisoformat(created_message['updated_at'].replace('Z', '+00:00')) if created_message.get('updated_at') else None
+                )
+            except Exception as e:
+                logger.error(f"Error converting message response to object: {e}")
+                logger.error(f"Response data: {created_message}")
+                return None
         else:
-            print(f"Error creating message: No data in response")
+            logger.error(f"Error creating message: No data in response")
             return None
             
     except Exception as e:
-        print(f"Error creating message: {e}")
+        logger.error(f"Error creating message: {e}")
         return None
 
 async def get_message(

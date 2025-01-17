@@ -1,407 +1,447 @@
 [
-    {
-      "table_name": "channel_members",
-      "column_name": "id",
-      "data_type": "uuid"
-    },
-    {
-      "table_name": "channel_members",
-      "column_name": "channel_id",
-      "data_type": "uuid"
-    },
-    {
-      "table_name": "channel_members",
-      "column_name": "user_id",
-      "data_type": "uuid"
-    },
-    {
-      "table_name": "channel_members",
-      "column_name": "profile_id",
-      "data_type": "uuid"
-    },
-    {
-      "table_name": "channel_members",
-      "column_name": "role",
-      "data_type": "text"
-    },
-    {
-      "table_name": "channel_members",
-      "column_name": "inserted_at",
-      "data_type": "timestamp with time zone"
-    },
-    {
-      "table_name": "channels",
-      "column_name": "id",
-      "data_type": "uuid"
-    },
-    {
-      "table_name": "channels",
-      "column_name": "slug",
-      "data_type": "text"
-    },
-    {
-      "table_name": "channels",
-      "column_name": "created_by",
-      "data_type": "uuid"
-    },
-    {
-      "table_name": "channels",
-      "column_name": "inserted_at",
-      "data_type": "timestamp with time zone"
-    },
-    {
-      "table_name": "direct_message_attachments",
-      "column_name": "id",
-      "data_type": "uuid"
-    },
-    {
-      "table_name": "direct_message_attachments",
-      "column_name": "message_id",
-      "data_type": "uuid"
-    },
-    {
-      "table_name": "direct_message_attachments",
-      "column_name": "user_id",
-      "data_type": "uuid"
-    },
-    {
-      "table_name": "direct_message_attachments",
-      "column_name": "profile_id",
-      "data_type": "uuid"
-    },
-    {
-      "table_name": "direct_message_attachments",
-      "column_name": "file_path",
-      "data_type": "text"
-    },
-    {
-      "table_name": "direct_message_attachments",
-      "column_name": "file_name",
-      "data_type": "text"
-    },
-    {
-      "table_name": "direct_message_attachments",
-      "column_name": "content_type",
-      "data_type": "text"
-    },
-    {
-      "table_name": "direct_message_attachments",
-      "column_name": "size",
-      "data_type": "integer"
-    },
-    {
-      "table_name": "direct_message_attachments",
-      "column_name": "created_at",
-      "data_type": "timestamp with time zone"
-    },
-    {
-      "table_name": "direct_message_attachments",
-      "column_name": "updated_at",
-      "data_type": "timestamp with time zone"
-    },
-    {
-      "table_name": "direct_message_channels",
-      "column_name": "id",
-      "data_type": "uuid"
-    },
-    {
-      "table_name": "direct_message_channels",
-      "column_name": "created_at",
-      "data_type": "timestamp with time zone"
-    },
-    {
-      "table_name": "direct_message_channels",
-      "column_name": "updated_at",
-      "data_type": "timestamp with time zone"
-    },
-    {
-      "table_name": "direct_message_members",
-      "column_name": "id",
-      "data_type": "uuid"
-    },
-    {
-      "table_name": "direct_message_members",
-      "column_name": "channel_id",
-      "data_type": "uuid"
-    },
-    {
-      "table_name": "direct_message_members",
-      "column_name": "user_id",
-      "data_type": "uuid"
-    },
-    {
-      "table_name": "direct_message_members",
-      "column_name": "profile_id",
-      "data_type": "uuid"
-    },
-    {
-      "table_name": "direct_message_members",
-      "column_name": "last_read_at",
-      "data_type": "timestamp with time zone"
-    },
-    {
-      "table_name": "direct_message_members",
-      "column_name": "created_at",
-      "data_type": "timestamp with time zone"
-    },
-    {
-      "table_name": "direct_messages",
-      "column_name": "id",
-      "data_type": "uuid"
-    },
-    {
-      "table_name": "direct_messages",
-      "column_name": "channel_id",
-      "data_type": "uuid"
-    },
-    {
-      "table_name": "direct_messages",
-      "column_name": "user_id",
-      "data_type": "uuid"
-    },
-    {
-      "table_name": "direct_messages",
-      "column_name": "profile_id",
-      "data_type": "uuid"
-    },
-    {
-      "table_name": "direct_messages",
-      "column_name": "content",
-      "data_type": "text"
-    },
-    {
-      "table_name": "direct_messages",
-      "column_name": "created_at",
-      "data_type": "timestamp with time zone"
-    },
-    {
-      "table_name": "direct_messages",
-      "column_name": "updated_at",
-      "data_type": "timestamp with time zone"
-    },
-    {
-      "table_name": "dm_channel_members",
-      "column_name": "id",
-      "data_type": "uuid"
-    },
-    {
-      "table_name": "dm_channel_members",
-      "column_name": "channel_id",
-      "data_type": "uuid"
-    },
-    {
-      "table_name": "dm_channel_members",
-      "column_name": "user_id",
-      "data_type": "uuid"
-    },
-    {
-      "table_name": "dm_channel_members",
-      "column_name": "last_read_at",
-      "data_type": "timestamp with time zone"
-    },
-    {
-      "table_name": "dm_channel_members",
-      "column_name": "created_at",
-      "data_type": "timestamp with time zone"
-    },
-    {
-      "table_name": "message_attachments",
-      "column_name": "id",
-      "data_type": "uuid"
-    },
-    {
-      "table_name": "message_attachments",
-      "column_name": "message_id",
-      "data_type": "uuid"
-    },
-    {
-      "table_name": "message_attachments",
-      "column_name": "filename",
-      "data_type": "character varying"
-    },
-    {
-      "table_name": "message_attachments",
-      "column_name": "file_path",
-      "data_type": "character varying"
-    },
-    {
-      "table_name": "message_attachments",
-      "column_name": "file_size",
-      "data_type": "integer"
-    },
-    {
-      "table_name": "message_attachments",
-      "column_name": "content_type",
-      "data_type": "character varying"
-    },
-    {
-      "table_name": "message_attachments",
-      "column_name": "inserted_at",
-      "data_type": "timestamp with time zone"
-    },
-    {
-      "table_name": "message_chunks",
-      "column_name": "id",
-      "data_type": "uuid"
-    },
-    {
-      "table_name": "message_chunks",
-      "column_name": "message_id",
-      "data_type": "uuid"
-    },
-    {
-      "table_name": "message_chunks",
-      "column_name": "dm_message_id",
-      "data_type": "uuid"
-    },
-    {
-      "table_name": "message_chunks",
-      "column_name": "chunk_index",
-      "data_type": "integer"
-    },
-    {
-      "table_name": "message_chunks",
-      "column_name": "chunk_content",
-      "data_type": "text"
-    },
-    {
-      "table_name": "message_chunks",
-      "column_name": "metadata",
-      "data_type": "jsonb"
-    },
-    {
-      "table_name": "message_chunks",
-      "column_name": "created_at",
-      "data_type": "timestamp with time zone"
-    },
-    {
-      "table_name": "message_embeddings",
-      "column_name": "id",
-      "data_type": "uuid"
-    },
-    {
-      "table_name": "message_embeddings",
-      "column_name": "chunk_id",
-      "data_type": "uuid"
-    },
-    {
-      "table_name": "message_embeddings",
-      "column_name": "embedding_vector",
-      "data_type": "USER-DEFINED"
-    },
-    {
-      "table_name": "message_embeddings",
-      "column_name": "created_at",
-      "data_type": "timestamp with time zone"
-    },
-    {
-      "table_name": "messages",
-      "column_name": "id",
-      "data_type": "uuid"
-    },
-    {
-      "table_name": "messages",
-      "column_name": "channel_id",
-      "data_type": "uuid"
-    },
-    {
-      "table_name": "messages",
-      "column_name": "user_id",
-      "data_type": "uuid"
-    },
-    {
-      "table_name": "messages",
-      "column_name": "profile_id",
-      "data_type": "uuid"
-    },
-    {
-      "table_name": "messages",
-      "column_name": "content",
-      "data_type": "text"
-    },
-    {
-      "table_name": "messages",
-      "column_name": "inserted_at",
-      "data_type": "timestamp with time zone"
-    },
-    {
-      "table_name": "profiles",
-      "column_name": "id",
-      "data_type": "uuid"
-    },
-    {
-      "table_name": "profiles",
-      "column_name": "username",
-      "data_type": "text"
-    },
-    {
-      "table_name": "profiles",
-      "column_name": "full_name",
-      "data_type": "text"
-    },
-    {
-      "table_name": "profiles",
-      "column_name": "avatar_url",
-      "data_type": "text"
-    },
-    {
-      "table_name": "profiles",
-      "column_name": "status",
-      "data_type": "text"
-    },
-    {
-      "table_name": "profiles",
-      "column_name": "last_seen",
-      "data_type": "timestamp with time zone"
-    },
-    {
-      "table_name": "profiles",
-      "column_name": "created_at",
-      "data_type": "timestamp with time zone"
-    },
-    {
-      "table_name": "profiles",
-      "column_name": "updated_at",
-      "data_type": "timestamp with time zone"
-    },
-    {
-      "table_name": "rag_queries",
-      "column_name": "id",
-      "data_type": "uuid"
-    },
-    {
-      "table_name": "rag_queries",
-      "column_name": "user_id",
-      "data_type": "uuid"
-    },
-    {
-      "table_name": "rag_queries",
-      "column_name": "query_text",
-      "data_type": "text"
-    },
-    {
-      "table_name": "rag_queries",
-      "column_name": "retrieved_chunks",
-      "data_type": "jsonb"
-    },
-    {
-      "table_name": "rag_queries",
-      "column_name": "response_text",
-      "data_type": "text"
-    },
-    {
-      "table_name": "rag_queries",
-      "column_name": "latency_ms",
-      "data_type": "integer"
-    },
-    {
-      "table_name": "rag_queries",
-      "column_name": "feedback_score",
-      "data_type": "integer"
-    },
-    {
-      "table_name": "rag_queries",
-      "column_name": "created_at",
-      "data_type": "timestamp with time zone"
-    }
-  ]
+  {
+    "table_name": "channel_members",
+    "column_name": "id",
+    "data_type": "uuid"
+  },
+  {
+    "table_name": "channel_members",
+    "column_name": "channel_id",
+    "data_type": "uuid"
+  },
+  {
+    "table_name": "channel_members",
+    "column_name": "user_id",
+    "data_type": "uuid"
+  },
+  {
+    "table_name": "channel_members",
+    "column_name": "profile_id",
+    "data_type": "uuid"
+  },
+  {
+    "table_name": "channel_members",
+    "column_name": "role",
+    "data_type": "text"
+  },
+  {
+    "table_name": "channel_members",
+    "column_name": "inserted_at",
+    "data_type": "timestamp with time zone"
+  },
+  {
+    "table_name": "channels",
+    "column_name": "id",
+    "data_type": "uuid"
+  },
+  {
+    "table_name": "channels",
+    "column_name": "slug",
+    "data_type": "text"
+  },
+  {
+    "table_name": "channels",
+    "column_name": "created_by",
+    "data_type": "uuid"
+  },
+  {
+    "table_name": "channels",
+    "column_name": "inserted_at",
+    "data_type": "timestamp with time zone"
+  },
+  {
+    "table_name": "direct_message_attachments",
+    "column_name": "id",
+    "data_type": "uuid"
+  },
+  {
+    "table_name": "direct_message_attachments",
+    "column_name": "message_id",
+    "data_type": "uuid"
+  },
+  {
+    "table_name": "direct_message_attachments",
+    "column_name": "user_id",
+    "data_type": "uuid"
+  },
+  {
+    "table_name": "direct_message_attachments",
+    "column_name": "profile_id",
+    "data_type": "uuid"
+  },
+  {
+    "table_name": "direct_message_attachments",
+    "column_name": "file_path",
+    "data_type": "text"
+  },
+  {
+    "table_name": "direct_message_attachments",
+    "column_name": "file_name",
+    "data_type": "text"
+  },
+  {
+    "table_name": "direct_message_attachments",
+    "column_name": "content_type",
+    "data_type": "text"
+  },
+  {
+    "table_name": "direct_message_attachments",
+    "column_name": "size",
+    "data_type": "integer"
+  },
+  {
+    "table_name": "direct_message_attachments",
+    "column_name": "created_at",
+    "data_type": "timestamp with time zone"
+  },
+  {
+    "table_name": "direct_message_attachments",
+    "column_name": "updated_at",
+    "data_type": "timestamp with time zone"
+  },
+  {
+    "table_name": "direct_message_channels",
+    "column_name": "id",
+    "data_type": "uuid"
+  },
+  {
+    "table_name": "direct_message_channels",
+    "column_name": "created_at",
+    "data_type": "timestamp with time zone"
+  },
+  {
+    "table_name": "direct_message_channels",
+    "column_name": "updated_at",
+    "data_type": "timestamp with time zone"
+  },
+  {
+    "table_name": "direct_message_members",
+    "column_name": "id",
+    "data_type": "uuid"
+  },
+  {
+    "table_name": "direct_message_members",
+    "column_name": "channel_id",
+    "data_type": "uuid"
+  },
+  {
+    "table_name": "direct_message_members",
+    "column_name": "user_id",
+    "data_type": "uuid"
+  },
+  {
+    "table_name": "direct_message_members",
+    "column_name": "profile_id",
+    "data_type": "uuid"
+  },
+  {
+    "table_name": "direct_message_members",
+    "column_name": "last_read_at",
+    "data_type": "timestamp with time zone"
+  },
+  {
+    "table_name": "direct_message_members",
+    "column_name": "created_at",
+    "data_type": "timestamp with time zone"
+  },
+  {
+    "table_name": "direct_messages",
+    "column_name": "id",
+    "data_type": "uuid"
+  },
+  {
+    "table_name": "direct_messages",
+    "column_name": "channel_id",
+    "data_type": "uuid"
+  },
+  {
+    "table_name": "direct_messages",
+    "column_name": "user_id",
+    "data_type": "uuid"
+  },
+  {
+    "table_name": "direct_messages",
+    "column_name": "profile_id",
+    "data_type": "uuid"
+  },
+  {
+    "table_name": "direct_messages",
+    "column_name": "content",
+    "data_type": "text"
+  },
+  {
+    "table_name": "direct_messages",
+    "column_name": "created_at",
+    "data_type": "timestamp with time zone"
+  },
+  {
+    "table_name": "direct_messages",
+    "column_name": "updated_at",
+    "data_type": "timestamp with time zone"
+  },
+  {
+    "table_name": "direct_messages",
+    "column_name": "attachments",
+    "data_type": "jsonb"
+  },
+  {
+    "table_name": "direct_messages",
+    "column_name": "message_type",
+    "data_type": "text"
+  },
+  {
+    "table_name": "direct_messages",
+    "column_name": "metadata",
+    "data_type": "jsonb"
+  },
+  {
+    "table_name": "direct_messages",
+    "column_name": "deleted_at",
+    "data_type": "timestamp with time zone"
+  },
+  {
+    "table_name": "direct_messages",
+    "column_name": "parent_id",
+    "data_type": "uuid"
+  },
+  {
+    "table_name": "dm_channel_members",
+    "column_name": "id",
+    "data_type": "uuid"
+  },
+  {
+    "table_name": "dm_channel_members",
+    "column_name": "channel_id",
+    "data_type": "uuid"
+  },
+  {
+    "table_name": "dm_channel_members",
+    "column_name": "user_id",
+    "data_type": "uuid"
+  },
+  {
+    "table_name": "dm_channel_members",
+    "column_name": "last_read_at",
+    "data_type": "timestamp with time zone"
+  },
+  {
+    "table_name": "dm_channel_members",
+    "column_name": "created_at",
+    "data_type": "timestamp with time zone"
+  },
+  {
+    "table_name": "message_attachments",
+    "column_name": "id",
+    "data_type": "uuid"
+  },
+  {
+    "table_name": "message_attachments",
+    "column_name": "message_id",
+    "data_type": "uuid"
+  },
+  {
+    "table_name": "message_attachments",
+    "column_name": "filename",
+    "data_type": "character varying"
+  },
+  {
+    "table_name": "message_attachments",
+    "column_name": "file_path",
+    "data_type": "character varying"
+  },
+  {
+    "table_name": "message_attachments",
+    "column_name": "file_size",
+    "data_type": "integer"
+  },
+  {
+    "table_name": "message_attachments",
+    "column_name": "content_type",
+    "data_type": "character varying"
+  },
+  {
+    "table_name": "message_attachments",
+    "column_name": "inserted_at",
+    "data_type": "timestamp with time zone"
+  },
+  {
+    "table_name": "message_chunks",
+    "column_name": "id",
+    "data_type": "uuid"
+  },
+  {
+    "table_name": "message_chunks",
+    "column_name": "message_id",
+    "data_type": "uuid"
+  },
+  {
+    "table_name": "message_chunks",
+    "column_name": "dm_message_id",
+    "data_type": "uuid"
+  },
+  {
+    "table_name": "message_chunks",
+    "column_name": "chunk_index",
+    "data_type": "integer"
+  },
+  {
+    "table_name": "message_chunks",
+    "column_name": "chunk_content",
+    "data_type": "text"
+  },
+  {
+    "table_name": "message_chunks",
+    "column_name": "metadata",
+    "data_type": "jsonb"
+  },
+  {
+    "table_name": "message_chunks",
+    "column_name": "created_at",
+    "data_type": "timestamp with time zone"
+  },
+  {
+    "table_name": "message_embeddings",
+    "column_name": "id",
+    "data_type": "uuid"
+  },
+  {
+    "table_name": "message_embeddings",
+    "column_name": "chunk_id",
+    "data_type": "uuid"
+  },
+  {
+    "table_name": "message_embeddings",
+    "column_name": "embedding_vector",
+    "data_type": "USER-DEFINED"
+  },
+  {
+    "table_name": "message_embeddings",
+    "column_name": "created_at",
+    "data_type": "timestamp with time zone"
+  },
+  {
+    "table_name": "messages",
+    "column_name": "id",
+    "data_type": "uuid"
+  },
+  {
+    "table_name": "messages",
+    "column_name": "channel_id",
+    "data_type": "uuid"
+  },
+  {
+    "table_name": "messages",
+    "column_name": "user_id",
+    "data_type": "uuid"
+  },
+  {
+    "table_name": "messages",
+    "column_name": "profile_id",
+    "data_type": "uuid"
+  },
+  {
+    "table_name": "messages",
+    "column_name": "content",
+    "data_type": "text"
+  },
+  {
+    "table_name": "messages",
+    "column_name": "inserted_at",
+    "data_type": "timestamp with time zone"
+  },
+  {
+    "table_name": "messages",
+    "column_name": "attachments",
+    "data_type": "jsonb"
+  },
+  {
+    "table_name": "messages",
+    "column_name": "parent_id",
+    "data_type": "uuid"
+  },
+  {
+    "table_name": "messages",
+    "column_name": "updated_at",
+    "data_type": "timestamp with time zone"
+  },
+  {
+    "table_name": "profiles",
+    "column_name": "id",
+    "data_type": "uuid"
+  },
+  {
+    "table_name": "profiles",
+    "column_name": "username",
+    "data_type": "text"
+  },
+  {
+    "table_name": "profiles",
+    "column_name": "full_name",
+    "data_type": "text"
+  },
+  {
+    "table_name": "profiles",
+    "column_name": "avatar_url",
+    "data_type": "text"
+  },
+  {
+    "table_name": "profiles",
+    "column_name": "status",
+    "data_type": "text"
+  },
+  {
+    "table_name": "profiles",
+    "column_name": "last_seen",
+    "data_type": "timestamp with time zone"
+  },
+  {
+    "table_name": "profiles",
+    "column_name": "created_at",
+    "data_type": "timestamp with time zone"
+  },
+  {
+    "table_name": "profiles",
+    "column_name": "updated_at",
+    "data_type": "timestamp with time zone"
+  },
+  {
+    "table_name": "rag_queries",
+    "column_name": "id",
+    "data_type": "uuid"
+  },
+  {
+    "table_name": "rag_queries",
+    "column_name": "user_id",
+    "data_type": "uuid"
+  },
+  {
+    "table_name": "rag_queries",
+    "column_name": "query_text",
+    "data_type": "text"
+  },
+  {
+    "table_name": "rag_queries",
+    "column_name": "retrieved_chunks",
+    "data_type": "jsonb"
+  },
+  {
+    "table_name": "rag_queries",
+    "column_name": "response_text",
+    "data_type": "text"
+  },
+  {
+    "table_name": "rag_queries",
+    "column_name": "latency_ms",
+    "data_type": "integer"
+  },
+  {
+    "table_name": "rag_queries",
+    "column_name": "feedback_score",
+    "data_type": "integer"
+  },
+  {
+    "table_name": "rag_queries",
+    "column_name": "created_at",
+    "data_type": "timestamp with time zone"
+  }
+]

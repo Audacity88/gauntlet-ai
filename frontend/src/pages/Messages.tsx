@@ -407,16 +407,16 @@ export default function Messages() {
                     
                     const otherUserProfile = otherMember?.profile;
                     
-                    console.log('DM member profiles:', {
-                      channelId: dm.channelId,
-                      currentUserEmail: currentUser?.email,
-                      members: dm.members.map((m: { user_id: string; profile: User }) => ({
-                        userId: m.user_id,
-                        username: m.profile?.username,
-                        fullName: m.profile?.full_name,
-                        isCurrentUser: m.profile.username === currentUser?.email
-                      }))
-                    });
+                    // console.log('DM member profiles:', {
+                    //   channelId: dm.channelId,
+                    //   currentUserEmail: currentUser?.email,
+                    //   members: dm.members.map((m: { user_id: string; profile: User }) => ({
+                    //     userId: m.user_id,
+                    //     username: m.profile?.username,
+                    //     fullName: m.profile?.full_name,
+                    //     isCurrentUser: m.profile.username === currentUser?.email
+                    //   }))
+                    // });
 
                     const displayName = otherUserProfile?.full_name || otherUserProfile?.username || 'Unknown User';
                     

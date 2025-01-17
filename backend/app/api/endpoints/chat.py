@@ -1,10 +1,10 @@
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 from app.core.database import get_db, Client
 from app.core.auth import get_current_user
 from app.models.user import User
-from app.models.message import create_message, MessageCreate, MessageType
+from app.models.message import create_message, MessageCreate, MessageType, Message
 from app.models.chat import (
     ChatRequest,
     ChatResponse,
@@ -20,6 +20,7 @@ from app.core.config import settings
 import os
 import logging
 from pydantic import BaseModel, UUID4
+from typing import Dict, Any
 
 logger = logging.getLogger(__name__)
 
@@ -32,97 +33,96 @@ class UserSummaryRequest(BaseModel):
     target_user_id: UUID4
     mode: str = "direct"
 
-@router.post("/send")
-async def send_message(
-    request: ChatRequest,
-    current_user: User = Depends(get_current_user),
-    db: Client = Depends(get_db)
-) -> ChatResponse:
-    """Send a message and get a response"""
-    print(f"Processing message request from {current_user.id} to {request.target_user_id}")
-    
-    # Get chat context
-    context = await format_chat_context(
-        db,
-        current_user.id,
-        request.target_user_id,
-        request.channel_id,
-        request.message_id
-    )
-    print(f"Chat context retrieved: {context}")
-    
+async def extract_channel_id(channel_response: Any) -> str:
+    """Extract channel_id from RPC response"""
     try:
-        # Add logging to verify the key at runtime
-        logger.info(f"Using OpenAI API key: {settings.OPENAI_API_KEY[:8]}...")
-        
-        # Prepare metadata
-        message_metadata = {
-            "mode": request.mode or "direct",  # Default to direct mode
-            "message_count": context.metadata.get("message_count", 0) if context.metadata else 0
-        }
-        
-        if request.target_user_id:
-            message_metadata["target_user_id"] = str(request.target_user_id)
+        # The response is a single row with a JSONB object containing channel_id
+        if isinstance(channel_response.data, list):
+            channel_data = channel_response.data[0]
+        else:
+            channel_data = channel_response.data
             
-        if request.metadata:
-            message_metadata.update(request.metadata)
+        channel_id = channel_data.get('channel_id')
+        if not channel_id:
+            logger.error(f"Channel response data: {channel_data}")
+            raise ValueError("No channel_id in response")
+        return str(channel_id)
+    except Exception as e:
+        logger.error(f"Error extracting channel_id from response: {channel_response.data}")
+        raise ValueError(f"Invalid channel response: {str(e)}")
 
-        # Format context for LLM
-        formatted_messages = "\n".join([
-            f"{msg.role}: {msg.content}" for msg in context.messages
-        ])
-
-        # Get target user's username for response
-        target_user_response = db.from_("profiles").select("username").eq("id", str(request.target_user_id)).single().execute()
-        if not target_user_response.data:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Target user profile not found"
-            )
-        target_username = target_user_response.data["username"]
-
-        # Generate response using LLM
-        llm_processor = LLMProcessor(api_key=settings.OPENAI_API_KEY)
-        llm_response = await llm_processor.generate_rag_response(
-            query=request.content,
-            context=formatted_messages,
-            username=target_username  # Use target user's username since they're responding
-        )
-
-        # Get DM channel or create a new one
+async def get_or_create_dm_channel(db: Client, current_user_id: UUID4, target_user_id: UUID4) -> str:
+    """Get or create a DM channel between two users"""
+    logger.info("Creating or getting DM channel...")
+    try:
         channel_response = db.rpc(
             'find_or_create_dm_channel',
             {
-                'p_user_id': str(current_user.id),
-                'p_other_user_id': str(request.target_user_id)
+                'p_user_id': str(current_user_id),
+                'p_other_user_id': str(target_user_id)
             }
         ).execute()
+        logger.info(f"Channel response: {channel_response.data}")
 
         if not channel_response.data:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to get or create DM channel"
-            )
+            raise ValueError("Failed to get or create DM channel")
 
-        # Extract channel_id from the response
-        try:
-            channel_id = str(channel_response.data.get('channel_id'))
-            if not channel_id:
-                raise ValueError("No channel_id in response")
-        except Exception as e:
-            logger.error(f"Error extracting channel_id from response: {channel_response.data}")
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Invalid channel response: {str(e)}"
-            )
+        return await extract_channel_id(channel_response)
+    except Exception as e:
+        logger.error(f"Error in get_or_create_dm_channel: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
 
-        # Create message from target user (avatar)
-        avatar_message = await create_message(
+async def create_user_message(
+    db: Client,
+    user_id: UUID4,
+    channel_id: str,
+    content: str,
+    metadata: Optional[Dict[str, Any]] = None
+) -> Message:
+    """Create a message from a user"""
+    try:
+        message = await create_message(
             db,
-            request.target_user_id,  # From target user
-            request.target_user_id,  # Use target user's profile_id
+            user_id,  # From user
+            user_id,  # Use user's profile_id
             MessageCreate(
-                content=llm_response["content"],
+                content=content,
+                channel_id=channel_id,
+                message_type=MessageType.TEXT,
+                metadata={
+                    "is_user_message": True,
+                    **(metadata or {})
+                }
+            )
+        )
+        if not message:
+            raise ValueError("Could not create user message")
+        return message
+    except Exception as e:
+        logger.error(f"Error creating user message: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
+
+async def create_avatar_message(
+    db: Client,
+    user_id: UUID4,
+    channel_id: str,
+    content: str,
+    llm_response: Dict[str, Any]
+) -> Message:
+    """Create a message from an avatar"""
+    try:
+        message = await create_message(
+            db,
+            user_id,  # From user (avatar)
+            user_id,  # Use user's profile_id
+            MessageCreate(
+                content=content,
                 channel_id=channel_id,
                 message_type=MessageType.TEXT,
                 metadata={
@@ -133,13 +133,80 @@ async def send_message(
                 }
             )
         )
+        if not message:
+            raise ValueError("Could not create avatar message")
+        return message
+    except Exception as e:
+        logger.error(f"Error creating avatar message: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
 
-        if not avatar_message:
+@router.post("/send")
+async def send_message(
+    request: ChatRequest,
+    current_user: User = Depends(get_current_user),
+    db: Client = Depends(get_db)
+) -> ChatResponse:
+    """Send a message and get a response"""
+    logger.info(f"Processing message request from {current_user.id} to {request.target_user_id}")
+    
+    try:
+        # Get chat context
+        context = await format_chat_context(
+            db,
+            current_user.id,
+            request.target_user_id,
+            request.channel_id,
+            request.message_id
+        )
+        formatted_messages = context.messages if context else []
+        logger.info(f"Chat context retrieved: {context}")
+        
+        # Get or create DM channel
+        channel_id = await get_or_create_dm_channel(db, current_user.id, request.target_user_id)
+        logger.info(f"Using channel_id: {channel_id}")
+
+        # Create user's message
+        user_message = await create_user_message(
+            db, 
+            current_user.id, 
+            channel_id, 
+            request.content,
+            request.metadata
+        )
+        logger.info(f"Created user message: {user_message.id}")
+
+        # Get target user's username for response
+        target_user_response = db.from_("profiles").select("username").eq("id", str(request.target_user_id)).single().execute()
+        if not target_user_response.data:
             raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Could not create avatar response"
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Target user profile not found"
             )
-            
+        target_username = target_user_response.data["username"]
+        logger.info(f"Target username: {target_username}")
+
+        # Generate response using LLM
+        llm_processor = LLMProcessor(api_key=settings.OPENAI_API_KEY)
+        llm_response = await llm_processor.generate_rag_response(
+            query=request.content,
+            context=formatted_messages,
+            username=target_username
+        )
+        logger.info("Generated LLM response")
+
+        # Create avatar's response message
+        avatar_message = await create_avatar_message(
+            db,
+            request.target_user_id,
+            channel_id,
+            llm_response["content"],
+            llm_response
+        )
+        logger.info(f"Created avatar message: {avatar_message.id}")
+
         # Return the avatar's response
         return ChatResponse(
             message_id=avatar_message.id,
@@ -148,7 +215,9 @@ async def send_message(
             created_at=avatar_message.inserted_at or datetime.utcnow(),
             metadata=avatar_message.metadata
         )
-            
+
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error in send_message: {str(e)}")
         raise HTTPException(
@@ -156,110 +225,76 @@ async def send_message(
             detail=str(e)
         )
 
-@router.post("/stream")
-async def stream_message(
-    request: ChatRequest,
+@router.post("/user_summary")
+async def get_user_summary(
+    request: UserSummaryRequest,
     current_user: User = Depends(get_current_user),
     db: Client = Depends(get_db)
-) -> StreamingResponse:
-    """
-    Send a message and get a streaming response that imitates the target user.
-    """
-    async def generate_stream() -> AsyncGenerator[str, None]:
-        try:
-            # Get chat context
-            context = await format_chat_context(
-                db,
-                current_user.id,
-                request.target_user_id,
-                request.channel_id,
-                request.message_id
+) -> ChatResponse:
+    """Get a summary of interactions with a user"""
+    logger.info(f"Getting user summary for {request.target_user_id}")
+    
+    try:
+        # Get chat context
+        context = await format_chat_context(
+            db,
+            current_user.id,
+            request.target_user_id,
+            None,  # No specific channel
+            None   # No specific message
+        )
+        formatted_messages = context.messages if context else []
+        logger.info(f"Chat context retrieved: {context}")
+
+        # Get or create DM channel
+        channel_id = await get_or_create_dm_channel(db, current_user.id, request.target_user_id)
+        logger.info(f"Using channel_id: {channel_id}")
+
+        # Get target user's username
+        target_user_response = db.from_("profiles").select("username").eq("id", str(request.target_user_id)).single().execute()
+        if not target_user_response.data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Target user profile not found"
             )
-            
-            # Create user message
-            user_message = await create_message(
-                db,
-                current_user.id,
-                MessageCreate(
-                    content=request.content,
-                    channel_id=request.channel_id,
-                    metadata={
-                        "target_user_id": str(request.target_user_id) if request.target_user_id else None,
-                        "mode": request.mode,
-                        **(request.metadata or {})
-                    }
-                )
-            )
-            
-            if not user_message:
-                yield json.dumps({
-                    "error": "Could not create message",
-                    "status_code": status.HTTP_400_BAD_REQUEST
-                })
-                return
-                
-            # TODO: Generate streaming response using LLM
-            # For now, stream the echo response word by word
-            response_content = f"Echo: {request.content}"
-            words = response_content.split()
-            
-            # Create initial assistant message
-            assistant_message = await create_message(
-                db,
-                current_user.id,  # We'll update this with the bot's ID later
-                MessageCreate(
-                    content="",  # Start empty, will be updated as we stream
-                    channel_id=request.channel_id,
-                    metadata={
-                        "is_assistant": True,
-                        "target_user_id": str(current_user.id),
-                        "mode": request.mode,
-                        "streaming": True,
-                        **(request.metadata or {})
-                    }
-                )
-            )
-            
-            if not assistant_message:
-                yield json.dumps({
-                    "error": "Could not create assistant response",
-                    "status_code": status.HTTP_500_INTERNAL_SERVER_ERROR
-                })
-                return
-                
-            # Stream each word
-            current_content = ""
-            for i, word in enumerate(words):
-                current_content = f"{current_content} {word}".strip()
-                chunk = ChatStreamChunk(
-                    message_id=assistant_message.id,
-                    content=current_content,
-                    role=ChatRole.ASSISTANT,
-                    created_at=datetime.utcnow(),
-                    is_complete=(i == len(words) - 1),
-                    metadata={
-                        "word_index": i,
-                        "total_words": len(words)
-                    }
-                )
-                yield json.dumps(chunk.dict()) + "\n"
-                
-            # Update the final message content
-            await db.from_("messages")\
-                .update({"content": current_content})\
-                .eq("id", str(assistant_message.id))\
-                .execute()
-                
-        except Exception as e:
-            yield json.dumps({
-                "error": f"Error processing chat request: {str(e)}",
-                "status_code": status.HTTP_500_INTERNAL_SERVER_ERROR
-            })
-            
-    return StreamingResponse(
-        generate_stream(),
-        media_type="text/event-stream"
-    ) 
+        target_username = target_user_response.data["username"]
+        logger.info(f"Target username: {target_username}")
+
+        # Generate summary using LLM
+        llm_processor = LLMProcessor(api_key=settings.OPENAI_API_KEY)
+        llm_response = await llm_processor.generate_user_summary(
+            context=formatted_messages,
+            username=target_username
+        )
+        logger.info("Generated user summary")
+
+        # Create avatar's summary message
+        avatar_message = await create_avatar_message(
+            db,
+            request.target_user_id,
+            channel_id,
+            llm_response["content"],
+            llm_response
+        )
+        logger.info(f"Created summary message: {avatar_message.id}")
+
+        # Return the summary response
+        return ChatResponse(
+            message_id=avatar_message.id,
+            content=avatar_message.content,
+            role=ChatRole.ASSISTANT,
+            created_at=avatar_message.inserted_at or datetime.utcnow(),
+            metadata=avatar_message.metadata
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in get_user_summary: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
 
 @router.post("/clear")
 async def clear_messages(
@@ -269,7 +304,7 @@ async def clear_messages(
 ) -> dict:
     """Clear all messages in a channel"""
     try:
-        # Get current timestamp for soft delete and convert to ISO string
+        # Get current timestamp for soft delete
         now = datetime.utcnow().isoformat()
 
         # Update all messages in the channel to be soft deleted
@@ -285,126 +320,6 @@ async def clear_messages(
         }
     except Exception as e:
         logger.error(f"Error in clear_messages: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(e)
-        ) 
-
-@router.post("/user_summary")
-async def get_user_summary(
-    request: UserSummaryRequest,
-    current_user: User = Depends(get_current_user),
-    db: Client = Depends(get_db)
-) -> ChatResponse:
-    """Get a summary of the target user's messages and personality"""
-    try:
-        # Get target user's username
-        target_user_response = db.from_("profiles").select("username").eq("id", str(request.target_user_id)).single().execute()
-        if not target_user_response.data:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Target user profile not found"
-            )
-        target_username = target_user_response.data["username"]
-
-        # Get user's recent messages from public channels
-        messages_response = db.from_("messages")\
-            .select("content, inserted_at")\
-            .eq("user_id", str(request.target_user_id))\
-            .order("inserted_at", desc=True)\
-            .limit(50)\
-            .execute()
-
-        # Format messages for context
-        message_history = ""
-        if messages_response.data:
-            message_history = "\n".join([
-                f"{msg['inserted_at']}: {msg['content']}"
-                for msg in messages_response.data
-            ])
-
-        # Create context for LLM
-        context = f"""
-        User Profile:
-        Username: {target_username}
-        
-        Recent Message History:
-        {message_history}
-        
-        Task: Based on the user's message history, provide a friendly introduction and summary of their interests and personality. 
-        Keep it conversational and engaging, as if you're introducing a friend.
-        """
-
-        # Generate summary using LLM
-        llm_processor = LLMProcessor(api_key=settings.OPENAI_API_KEY)
-        llm_response = await llm_processor.generate_rag_response(
-            query="Please introduce yourself and summarize this user's interests and personality.",
-            context=context,
-            username=target_username
-        )
-
-        # Get DM channel or create a new one
-        channel_response = db.rpc(
-            'find_or_create_dm_channel',
-            {
-                'p_user_id': str(current_user.id),
-                'p_other_user_id': str(request.target_user_id)
-            }
-        ).execute()
-
-        if not channel_response.data:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to get or create DM channel"
-            )
-
-        # Extract channel_id from the response
-        try:
-            channel_id = str(channel_response.data.get('channel_id'))
-            if not channel_id:
-                raise ValueError("No channel_id in response")
-        except Exception as e:
-            logger.error(f"Error extracting channel_id from response: {channel_response.data}")
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Invalid channel response: {str(e)}"
-            )
-
-        # Create message from target user (avatar)
-        avatar_message = await create_message(
-            db,
-            request.target_user_id,  # From target user
-            request.target_user_id,  # Use target user's profile_id
-            MessageCreate(
-                content=llm_response["content"],
-                channel_id=channel_id,
-                message_type=MessageType.TEXT,
-                metadata={
-                    "is_avatar_response": True,
-                    "is_introduction": True,
-                    "model": llm_response["model"],
-                    "usage": llm_response["usage"]
-                }
-            )
-        )
-
-        if not avatar_message:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Could not create avatar response"
-            )
-
-        # Return the avatar's response
-        return ChatResponse(
-            message_id=avatar_message.id,
-            content=avatar_message.content,
-            role=ChatRole.ASSISTANT,
-            created_at=avatar_message.inserted_at or datetime.utcnow(),
-            metadata=avatar_message.metadata
-        )
-
-    except Exception as e:
-        logger.error(f"Error in get_user_summary: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(e)

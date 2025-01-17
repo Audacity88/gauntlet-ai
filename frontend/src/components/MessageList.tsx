@@ -54,17 +54,27 @@ const MessageListContent = memo(function MessageListContent({
 
   // Scroll to bottom function
   const scrollToBottom = () => {
-    if (messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
     }
   };
 
-  // Scroll to bottom on new messages
+  // Only scroll to bottom when new messages arrive, not when loading historical messages
   useEffect(() => {
-    if (!searchQuery) {
-      scrollToBottom();
+    // Only scroll if:
+    // 1. Not searching
+    // 2. Messages have loaded
+    // 3. The last message is from the current user OR it's a new message (not part of initial load)
+    if (!searchQuery && !isLoading && messages.length > 0) {
+      const lastMessage = messages[messages.length - 1];
+      const isNewMessage = lastMessage.id.startsWith('temp-') || 
+                          new Date(lastMessage.created_at).getTime() > new Date().getTime() - 1000;
+      
+      if (lastMessage.user_id === user?.id || isNewMessage) {
+        scrollToBottom();
+      }
     }
-  }, [messages.length, searchQuery]);
+  }, [messages.length, searchQuery, isLoading, user?.id]);
 
   // Handle search
   const handleSearch = useCallback((query: string) => {
