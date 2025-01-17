@@ -19,10 +19,14 @@ from app.rag.llm import LLMProcessor
 from app.core.config import settings
 import os
 import logging
+from pydantic import BaseModel, UUID4
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+class ClearChannelRequest(BaseModel):
+    channel_id: UUID4
 
 @router.post("/send")
 async def send_message(
@@ -249,3 +253,32 @@ async def stream_message(
         generate_stream(),
         media_type="text/event-stream"
     ) 
+
+@router.post("/clear")
+async def clear_messages(
+    request: ClearChannelRequest,
+    current_user: User = Depends(get_current_user),
+    db: Client = Depends(get_db)
+) -> dict:
+    """Clear all messages in a channel"""
+    try:
+        # Get current timestamp for soft delete and convert to ISO string
+        now = datetime.utcnow().isoformat()
+
+        # Update all messages in the channel to be soft deleted
+        result = db.from_("direct_messages")\
+            .update({"deleted_at": now})\
+            .eq("channel_id", str(request.channel_id))\
+            .filter("deleted_at", "is", "null")\
+            .execute()
+
+        return {
+            "status": "success",
+            "message": "Messages cleared successfully"
+        }
+    except Exception as e:
+        logger.error(f"Error in clear_messages: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        ) 

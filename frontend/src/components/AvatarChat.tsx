@@ -204,9 +204,89 @@ export function AvatarChat({ className = '' }: AvatarChatProps) {
     setIsStreaming(prev => !prev);
   }, []);
 
-  const handleClearContext = useCallback(() => {
-    setMessageId(null);
-  }, []);
+  const handleClearContext = useCallback(async () => {
+    if (!targetUser?.channelId) {
+      alert('Please select a target user first');
+      return;
+    }
+
+    try {
+      console.log('Clearing messages for channel:', targetUser.channelId);
+
+      // First delete current user's messages
+      const { data: messages, error: fetchError } = await supabase
+        .from('direct_messages')
+        .select('id')
+        .eq('channel_id', targetUser.channelId)
+        .is('deleted_at', null);
+
+      if (fetchError) {
+        console.error('Error fetching messages:', fetchError);
+        throw fetchError;
+      }
+
+      console.log('Found messages to delete:', messages?.length);
+
+      // Delete current user's messages
+      const now = new Date().toISOString();
+      for (const message of messages || []) {
+        const { error: deleteError } = await supabase
+          .from('direct_messages')
+          .update({ deleted_at: now })
+          .eq('id', message.id);
+
+        if (deleteError) {
+          console.error('Error deleting message:', message.id, deleteError);
+          throw deleteError;
+        }
+      }
+
+      // Now handle test user's messages through the API
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError || !session?.access_token) {
+        throw new Error('No active session or missing access token');
+      }
+
+      // Call the API to clear test user's messages
+      const response = await fetch('http://localhost:8000/api/chat/clear', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify({
+          channel_id: targetUser.channelId
+        })
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`API error: ${response.status} ${response.statusText} - ${errorText}`);
+      }
+
+      console.log('Successfully cleared all messages');
+
+      // Reset state
+      setMessageId(null);
+      setMessageHistory([]);
+      setStreamedResponse('');
+      setChatError(null);
+
+      // Force a complete reload of the chat
+      // First unsubscribe from the current channel
+      if (targetUser.channelId) {
+        const channel = supabase.channel(targetUser.channelId);
+        await channel.unsubscribe();
+      }
+
+      // Trigger a re-selection of the user to fully reset the chat
+      await handleUserSelect(targetUser);
+
+    } catch (error) {
+      console.error('Error clearing context:', error);
+      alert(error instanceof Error ? error.message : 'Failed to clear context');
+    }
+  }, [targetUser, handleUserSelect]);
 
   return (
     <div className="flex h-full">

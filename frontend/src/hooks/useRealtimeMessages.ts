@@ -177,10 +177,12 @@ export function useRealtimeMessages({
             .from('direct_messages')
             .select('*, user:profiles(*), attachments')
             .eq('channel_id', channelId)
+            .is('deleted_at', null)
         : supabase
             .from('messages')
             .select('*, profile:profiles(*), attachments')
-            .eq('channel_id', channelId);
+            .eq('channel_id', channelId)
+            .is('deleted_at', null);
 
       // Handle thread filtering consistently for both message types
       if (parentId) {
@@ -217,7 +219,8 @@ export function useRealtimeMessages({
           timestamps: {
             created_at: msg.created_at,
             inserted_at: msg.inserted_at,
-            updated_at: msg.updated_at
+            updated_at: msg.updated_at,
+            deleted_at: msg.deleted_at
           }
         }))
       });
@@ -227,7 +230,6 @@ export function useRealtimeMessages({
       }
 
       if (newMessages.length > 0) {
-        // Use our helper to get the timestamp of the first message
         lastMessageTimestamp.current = getMessageTimestamp(newMessages[0]);
         console.log('Updated last message timestamp:', lastMessageTimestamp.current);
       }
@@ -259,14 +261,14 @@ export function useRealtimeMessages({
   }, [user, channelId, messages.length, fetchMessages]);
 
   // Debug member data changes
-  useEffect(() => {
-    console.log('Member data changed:', {
-      memberData,
-      channelId,
-      chatType,
-      isMembershipLoading
-    });
-  }, [memberData, channelId, chatType, isMembershipLoading]);
+  // useEffect(() => {
+  //   console.log('Member data changed:', {
+  //     memberData,
+  //     channelId,
+  //     chatType,
+  //     isMembershipLoading
+  //   });
+  // }, [memberData, channelId, chatType, isMembershipLoading]);
 
   // Handle member data fetching
   useEffect(() => {
@@ -342,7 +344,7 @@ export function useRealtimeMessages({
     const channel = supabase
       .channel(subscriptionId)
       .on(
-        'postgres_changes',
+        'postgres_changes' as any,
         {
           event: 'INSERT',
           schema: 'public',
@@ -359,10 +361,12 @@ export function useRealtimeMessages({
               .from('direct_messages')
                 .select('*, user:profiles(*), attachments')
                 .eq('id', messageId)
+                .is('deleted_at', null)
             : supabase
               .from('messages')
                 .select('*, profile:profiles(*), attachments')
-                .eq('id', messageId);
+                .eq('id', messageId)
+                .is('deleted_at', null);
 
           const { data: messageWithUser, error } = await query.single();
 
@@ -380,7 +384,7 @@ export function useRealtimeMessages({
         }
       )
       .on(
-        'postgres_changes',
+        'postgres_changes' as any,
         {
           event: 'UPDATE',
           schema: 'public',
@@ -391,16 +395,24 @@ export function useRealtimeMessages({
         async (payload) => {
           if (!isCurrentSubscription) return;
           
+          // If the message was soft deleted, remove it from the UI
+          if (payload.new.deleted_at) {
+            setMessages(prev => prev.filter(msg => msg.id !== payload.new.id));
+            return;
+          }
+
           const messageId = payload.new.id;
           const query = chatType === 'dm'
             ? supabase
                 .from('direct_messages')
                 .select('*, user:profiles(*), attachments')
                 .eq('id', messageId)
+                .is('deleted_at', null)
             : supabase
                 .from('messages')
                 .select('*, profile:profiles(*), attachments')
-                .eq('id', messageId);
+                .eq('id', messageId)
+                .is('deleted_at', null);
 
           const { data: messageWithUser, error } = await query.single();
 
@@ -426,7 +438,7 @@ export function useRealtimeMessages({
         }
       )
       .on(
-        'postgres_changes',
+        'postgres_changes' as any,
         {
           event: 'DELETE',
           schema: 'public',
@@ -497,6 +509,101 @@ export function useRealtimeMessages({
       try {
         let result;
         if (chatType === 'dm') {
+          // Get the other user's ID from the channel members
+          const { data: channelMembers, error: membersError } = await supabase
+            .from('direct_message_members')
+            .select('user_id')
+            .eq('channel_id', channelId);
+
+          if (membersError) throw membersError;
+
+          const otherUserId = channelMembers?.find(member => member.user_id !== user.id)?.user_id;
+          if (!otherUserId) throw new Error('Could not find other user in channel');
+
+          // Check if the other user is the test user
+          const { data: otherUser, error: userError } = await supabase
+            .from('profiles')
+            .select('username')
+            .eq('id', otherUserId)
+            .single();
+
+          if (userError) throw userError;
+
+          // If sending to test user, redirect to API
+          if (otherUser.username === 'testuser@gmail.com') {
+            // First create the message in the database from current user
+            const messageData = {
+              channel_id: channelId,
+              user_id: user.id,
+              profile_id: memberData.profile_id,
+              content: trimmedContent || ' ',
+              parent_id: effectiveParentId,
+              message_type: attachmentUrl ? 'file' : 'text',
+              created_at: now,
+              updated_at: now,
+              attachments: attachmentUrl
+                ? [
+                    {
+                      url: attachmentUrl,
+                      file_path: attachmentUrl,
+                      filename:
+                        fileMetadata?.filename ||
+                        attachmentUrl.split('/').pop() ||
+                        'attachment',
+                      content_type:
+                        fileMetadata?.contentType || 'application/octet-stream',
+                      size: fileMetadata?.size || 0
+                    }
+                  ]
+                : []
+            };
+
+            const { data: messageResult, error: messageError } = await supabase
+              .from('direct_messages')
+              .insert(messageData)
+              .select(`
+                *,
+                profile:profiles!direct_messages_profile_id_fkey(
+                  id,
+                  username,
+                  full_name,
+                  avatar_url
+                )
+              `)
+              .single();
+
+            if (messageError) throw messageError;
+
+            // Get current session for API request
+            const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+            if (sessionError || !session?.access_token) {
+              throw new Error('No active session or missing access token');
+            }
+
+            // Make API request to get test user's response
+            const response = await fetch('http://localhost:8000/api/chat/send', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${session.access_token}`
+              },
+              body: JSON.stringify({
+                content: trimmedContent,
+                target_user_id: otherUserId, // Send to test user
+                mode: 'direct'
+              })
+            });
+
+            if (!response.ok) {
+              const errorText = await response.text();
+              throw new Error(`API error: ${response.status} ${response.statusText} - ${errorText}`);
+            }
+
+            const data = await response.json();
+            return messageResult; // Return the original message result
+          }
+
+          // Regular DM message handling
           const messageData = {
             channel_id: channelId,
             user_id: user.id,
