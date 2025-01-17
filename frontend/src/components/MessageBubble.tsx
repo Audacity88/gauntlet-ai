@@ -49,13 +49,15 @@ const MessageBubbleContent = memo(function MessageBubbleContent({
   const [error, setError] = useState<MessageError | null>(null);
 
   const content = 'content' in message ? message.content : message.message;
-  const isCurrentUser = currentUser?.id === message.user_id;
+  // Check both sender_id and user_id to handle both API and app messages
+  const isCurrentUser = currentUser?.id === (message.sender_id || message.user_id);
   const getUserProfile = useStatusStore((state) => state.getUserProfile);
-  const cachedUser = getUserProfile(message.user_id);
+  // Use sender_id if available, otherwise fall back to user_id
+  const cachedUser = getUserProfile(message.sender_id || message.user_id);
 
-  // Use cached user profile if available, otherwise use message.user
-  const user = cachedUser || message.user || {
-    id: message.user_id,
+  // Use cached user profile if available, otherwise use message.sender or message.user
+  const user = cachedUser || message.sender || message.user || {
+    id: message.sender_id || message.user_id,
     username: 'Unknown User',
     full_name: 'Unknown User',
     avatar_url: null

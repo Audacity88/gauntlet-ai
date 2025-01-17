@@ -1,8 +1,14 @@
 import logging
+from pathlib import Path
+from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api.api import api_router
-from app.core.config import settings
+from .api.api import api_router
+from .core.config import settings
+
+# Load environment variables from .env file
+env_path = Path(__file__).resolve().parents[1] / '.env'
+load_dotenv(dotenv_path=env_path)
 
 # Configure logging
 logging.basicConfig(

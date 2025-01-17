@@ -17,6 +17,10 @@ from datetime import datetime
 import json
 from app.rag.llm import LLMProcessor
 from app.core.config import settings
+import os
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -40,6 +44,9 @@ async def send_message(
     print(f"Chat context retrieved: {context}")
     
     try:
+        # Add logging to verify the key at runtime
+        logger.info(f"Using OpenAI API key: {settings.OPENAI_API_KEY[:8]}...")
+        
         # Prepare metadata
         message_metadata = {
             "mode": request.mode or "direct",  # Default to direct mode
@@ -132,7 +139,7 @@ async def send_message(
         )
             
     except Exception as e:
-        print(f"Error in send_message: {e}")
+        logger.error(f"Error in send_message: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(e)

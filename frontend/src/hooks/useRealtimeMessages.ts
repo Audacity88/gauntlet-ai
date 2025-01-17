@@ -271,79 +271,58 @@ export function useRealtimeMessages({
   // Handle member data fetching
   useEffect(() => {
     const fetchMemberData = async () => {
-      if (!user || !channelId) {
-        console.log('Skipping member data fetch - no user or channelId');
-        setIsMembershipLoading(false);
-        return;
-      }
-      
-      console.log('Fetching member data:', {
-        user: user.id,
-        channelId,
-        chatType
-      });
-      
       try {
-        const table = chatType === 'dm' ? 'direct_message_members' : 'channel_members';
-        const { data, error: memberError } = await supabase
-          .from(table)
-          .select('profile_id')
-          .eq('channel_id', channelId)
-          .eq('user_id', user.id)
-          .maybeSingle();
-
-        console.log('Member data fetch result:', { data, error: memberError });
-
-        if (memberError) {
-          console.error('Member data fetch error:', memberError);
-          setError(memberError instanceof Error ? memberError : new Error('Failed to fetch member data'));
+        if (!channelId || !user) {
+          setMemberData(null);
+          setIsMembershipLoading(false);
           return;
         }
 
-        // Only update member data if we're still on the same channel and user
-        if (lastChannelId.current === channelId && lastChatType.current === chatType) {
-          if (data) {
-            console.log('Setting member data:', data);
-            setMemberData(data);
-            setError(null);
-          } else if (chatType === 'dm') {
-            console.log('Creating DM member data');
-            // For DMs, try to create member data if it doesn't exist
-            const { data: newMemberData, error: insertError } = await supabase
-              .from('direct_message_members')
-              .insert({
-                channel_id: channelId,
-                user_id: user.id,
-                profile_id: user.id
-              })
-              .select('profile_id')
-              .single();
+        if (chatType === 'dm') {
+          // For DMs, get the member data from direct_message_members
+          const { data, error } = await supabase
+            .from('direct_message_members')
+            .select('id, profile_id')
+            .eq('channel_id', channelId)
+            .eq('user_id', user.id)
+            .single();
 
-            console.log('DM member data creation result:', { newMemberData, error: insertError });
-
-            if (insertError) {
-              console.error('Failed to create member data:', insertError);
-              setError(new Error('Failed to create member data'));
-            } else if (newMemberData) {
-              console.log('Setting new member data:', newMemberData);
-              setMemberData(newMemberData);
-              setError(null);
-            }
-          } else {
-            console.log('Not a member of this channel/conversation');
-            setError(new Error(`Not a member of this ${chatType === 'dm' ? 'conversation' : 'channel'}`));
+          if (error) {
+            console.error('Error fetching DM member data:', error);
+            setError(error);
+            return;
           }
+          setMemberData(data);
         } else {
-          console.log('Channel changed during member data fetch, skipping update');
+          // For channels, get the member data from channel_members
+          const { data, error } = await supabase
+            .from('channel_members')
+            .select('id, profile_id')
+            .eq('channel_id', channelId)
+            .eq('user_id', user.id)
+            .single();
+
+          if (error) {
+            console.error('Error fetching channel member data:', error);
+            setError(error);
+            return;
+          }
+          setMemberData(data);
         }
+      } catch (err) {
+        console.error('Error fetching member data:', err);
+        setError(err instanceof Error ? err : new Error('Failed to fetch member data'));
       } finally {
         setIsMembershipLoading(false);
       }
     };
 
-    if (user && channelId) {
+    if (channelId && user) {
       setIsMembershipLoading(true);
       fetchMemberData();
+    } else {
+      setMemberData(null);
+      setIsMembershipLoading(false);
     }
   }, [user, channelId, chatType]);
 
@@ -481,8 +460,34 @@ export function useRealtimeMessages({
       replyToId?: string
     ) => {
       if (!user) throw new Error('No user found');
-      if (!memberData) throw new Error('No member data found');
+      if (!channelId) throw new Error('No channel selected');
       if (isMembershipLoading) throw new Error('Membership status is still loading');
+      if (!memberData) {
+        // Try to fetch member data one more time
+        try {
+          const { data: fetchedMemberData, error: memberError } = chatType === 'dm'
+            ? await supabase
+                .from('direct_message_members')
+                .select('id, profile_id')
+                .eq('channel_id', channelId)
+                .eq('user_id', user.id)
+                .single()
+            : await supabase
+                .from('channel_members')
+                .select('id, profile_id')
+                .eq('channel_id', channelId)
+                .eq('user_id', user.id)
+                .single();
+
+          if (memberError || !fetchedMemberData) {
+            throw new Error('Could not find member data. Please try again.');
+          }
+          
+          setMemberData(fetchedMemberData);
+        } catch (err) {
+          throw new Error('Could not find member data. Please try again.');
+        }
+      }
       
       const trimmedContent = content.trim();
       const now = new Date().toISOString();
@@ -498,6 +503,7 @@ export function useRealtimeMessages({
             profile_id: memberData.profile_id,
             content: trimmedContent || ' ',
             parent_id: effectiveParentId,
+            message_type: attachmentUrl ? 'file' : 'text',
             created_at: now,
             updated_at: now,
             attachments: attachmentUrl
@@ -520,7 +526,15 @@ export function useRealtimeMessages({
           const { data, error } = await supabase
             .from('direct_messages')
             .insert(messageData)
-            .select('*, user:profiles(*)')
+            .select(`
+              *,
+              profile:profiles!direct_messages_profile_id_fkey(
+                id,
+                username,
+                full_name,
+                avatar_url
+              )
+            `)
             .single();
 
           if (error) throw error;

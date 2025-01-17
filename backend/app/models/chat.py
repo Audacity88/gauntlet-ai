@@ -56,13 +56,22 @@ def convert_to_chat_message(db_message: Dict[str, Any]) -> ChatMessage:
     
     # Create metadata with message details and profile info
     metadata = {
-        'id': db_message.get('id'),
+        'id': str(db_message.get('id')) if db_message.get('id') else None,
         'created_at': db_message.get('created_at'),
         'message_type': db_message.get('message_type', 'text'),
-        'channel_id': db_message.get('channel_id'),
-        'user_id': db_message.get('user_id'),
+        'channel_id': str(db_message.get('channel_id')) if db_message.get('channel_id') else None,
+        'user_id': str(db_message.get('user_id')) if db_message.get('user_id') else None,
         **profile_info
     }
+    
+    # Convert any additional UUIDs in the message metadata
+    if db_message.get('metadata'):
+        msg_metadata = db_message['metadata']
+        if isinstance(msg_metadata, dict):
+            for key, value in msg_metadata.items():
+                if isinstance(value, UUID):
+                    msg_metadata[key] = str(value)
+            metadata.update(msg_metadata)
     
     return ChatMessage(
         role=ChatRole.USER,  # All messages in DMs are from users

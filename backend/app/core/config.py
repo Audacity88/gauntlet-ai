@@ -2,14 +2,18 @@ from typing import Optional
 import logging
 from pydantic import BaseSettings
 import os
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
+# Get absolute path to .env file
+ENV_PATH = Path(__file__).resolve().parents[2] / '.env'
 
 class Settings(BaseSettings):
     """Application settings."""
     
     class Config:
-        env_file = '.env'
+        env_file = str(ENV_PATH)
         env_file_encoding = 'utf-8'
         case_sensitive = True
         env_prefix = ''  # No prefix for env vars
@@ -37,5 +41,7 @@ class Settings(BaseSettings):
         # Use provided DATABASE_URL if available, otherwise construct from components
         if not self.DATABASE_URL:
             raise ValueError("DATABASE_URL environment variable must be set")
+        
+        logger.info(f"Using OpenAI API key: {self.OPENAI_API_KEY[:8]}...")
 
 settings = Settings() 

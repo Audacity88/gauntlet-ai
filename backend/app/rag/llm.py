@@ -4,6 +4,7 @@ import json
 import time
 import asyncio
 from openai import AsyncOpenAI
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +29,7 @@ class LLMProcessor:
         temperature: float = 0.85  # Increased for more creative/human-like responses
     ):
         """Initialize the LLM processor."""
+        logger.info(f"Initializing LLMProcessor with API key: {api_key[:8]}...{api_key[-4:]}")
         self.client = AsyncOpenAI(api_key=api_key)
         self.model_name = model_name
         self.temperature = temperature
@@ -52,6 +54,7 @@ Message: {query}
     ) -> Dict[str, Any]:
         """Generate a response using the LLM."""
         try:
+            logger.info("Generating response using OpenAI API")
             prompt = self._create_prompt(query, context, username)
             
             if "instruct" in self.model_name:

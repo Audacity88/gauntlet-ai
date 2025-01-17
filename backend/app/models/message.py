@@ -48,17 +48,22 @@ async def create_message(
         # Determine if this is a direct message
         is_direct = data.get('metadata', {}).get('mode') == 'direct'
         
+        # Convert UUIDs in metadata to strings
+        metadata = data.get('metadata', {})
+        if metadata and 'target_user_id' in metadata:
+            metadata['target_user_id'] = str(metadata['target_user_id'])
+        
         # Prepare message data
         message_insert = {
             "id": str(uuid4()),
-            "channel_id": str(data["channel_id"]),
+            "channel_id": str(data["channel_id"]) if data.get("channel_id") else None,
             "user_id": str(user_id),
             "profile_id": str(profile_id),
             "content": data["content"],
             "message_type": data.get("message_type", "text"),
-            "parent_id": data.get("parent_id"),
+            "parent_id": str(data["parent_id"]) if data.get("parent_id") else None,
             "attachments": data.get("attachments"),
-            "metadata": data.get("metadata"),
+            "metadata": metadata,
             "created_at": datetime.utcnow().isoformat(),
             "updated_at": datetime.utcnow().isoformat()
         }
@@ -84,7 +89,7 @@ async def create_message(
                 content=created_message['content'],
                 message_type=MessageType(created_message.get('message_type', 'text')),
                 parent_id=UUID(created_message['parent_id']) if created_message.get('parent_id') else None,
-                channel_id=UUID(created_message['channel_id']),
+                channel_id=UUID(created_message['channel_id']) if created_message.get('channel_id') else None,
                 attachments=created_message.get('attachments'),
                 metadata=created_message.get('metadata'),
                 inserted_at=datetime.fromisoformat(created_message['created_at'].replace('Z', '+00:00')),

@@ -20,6 +20,20 @@ interface ChatTarget {
   name: string
 }
 
+// Helper function to safely convert dmChannels to array
+const getDMChannelsArray = (dmChannels: any) => {
+  if (!dmChannels) {
+    return [];
+  }
+  
+  if (dmChannels instanceof Map) {
+    return Array.from(dmChannels.entries());
+  }
+  
+  console.warn('dmChannels is neither null/undefined nor a Map:', typeof dmChannels);
+  return [];
+};
+
 export default function Messages() {
   const [currentChat, setCurrentChat] = useState<ChatTarget | null>(null)
   const { user: currentUser } = useAuth()
@@ -135,10 +149,11 @@ export default function Messages() {
     }
   }, [currentChat, invalidateChannelMessages])
 
-  const getOtherUser = useCallback((members: { user: User }[] | undefined) => {
-    if (!currentUser || !members || !Array.isArray(members)) return null
-    return members.find(m => m.user.id !== currentUser.id)?.user
-  }, [currentUser])
+  const getOtherUser = useCallback((members: { user_id: string; profile: User }[] | undefined) => {
+    if (!currentUser || !members || !Array.isArray(members)) return null;
+    const otherMember = members.find(m => m.user_id !== currentUser.id);
+    return otherMember?.profile;
+  }, [currentUser]);
 
   const handleCreateChannel = async () => {
     if (!currentUser) {
@@ -188,7 +203,7 @@ export default function Messages() {
       setCurrentChat({
         type: 'dm',
         id: channelId,
-        name: selectedUser.username || selectedUser.full_name || 'Unknown User'
+        name: selectedUser.full_name || selectedUser.username || 'Unknown User'
       })
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Failed to create direct message')
@@ -234,6 +249,7 @@ export default function Messages() {
         .maybeSingle()
 
       if (memberError) {
+        console.error('Error checking channel membership:', memberError)
         alert('Error joining channel. Please try again.')
         return
       }
@@ -244,10 +260,12 @@ export default function Messages() {
           .from('channel_members')
           .insert({
             channel_id: channel.id,
-            user_id: currentUser.id
+            user_id: currentUser.id,
+            profile_id: currentUser.id
           })
 
         if (joinError) {
+          console.error('Error joining channel:', joinError)
           alert('Error joining channel. Please try again.')
           return
         }
@@ -260,6 +278,7 @@ export default function Messages() {
         name: channel.slug
       })
     } catch (error) {
+      console.error('Error joining channel:', error)
       alert('Error joining channel. Please try again.')
     }
   }, [currentUser, setCurrentChat])
@@ -351,35 +370,67 @@ export default function Messages() {
             <div className="text-gray-500">No direct messages yet</div>
           ) : (
             <div className="space-y-2">
-              {Array.from(dmChannels.values())
-                .filter(dm => dm && dm.id && dm.members) // Filter out invalid DMs
-                .map(dm => {
-                  const otherUser = getOtherUser(dm.members)
-                  const displayName = otherUser?.username || 'Unknown User'
-                  
-                  return (
-                    <button
-                      key={dm.id}
-                      onClick={() => setCurrentChat({
-                        type: 'dm',
-                        id: dm.id,
-                        name: displayName
-                      })}
-                      className={`w-full text-left px-2 py-1 rounded text-black bg-indigo-50 hover:bg-indigo-100 ${
-                        currentChat?.id === dm.id
-                          ? 'bg-indigo-100'
-                          : ''
-                      }`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center space-x-2">
-                          <span className="text-black">{displayName}</span>
-                          {otherUser && <UserPresence userId={otherUser.id} size="sm" />}
+              {(() => {
+                // console.log('Rendering DM channels:', {
+                //   dmChannelsSize: dmChannels.size,
+                //   isMap: dmChannels instanceof Map,
+                //   entries: getDMChannelsArray(dmChannels).map(([userId, dm]) => ({
+                //     userId,
+                //     channelId: dm.channelId,
+                //     hasMembers: Boolean(dm.members),
+                //     memberCount: dm.members?.length
+                //   }))
+                // });
+
+                return getDMChannelsArray(dmChannels)
+                  .filter(([_, dm]) => {
+                    const isValid = dm && dm.channelId && dm.members;
+                    if (!isValid) {
+                      console.log('Filtered out DM:', {
+                        hasData: Boolean(dm),
+                        hasChannelId: Boolean(dm?.channelId),
+                        hasMembers: Boolean(dm?.members)
+                      });
+                    }
+                    return isValid;
+                  })
+                  .map(([userId, dm]) => {
+                    const otherUser = getOtherUser(dm.members);
+                    // console.log('Processing DM entry:', {
+                    //   userId,
+                    //   channelId: dm.channelId,
+                    //   otherUser: otherUser ? {
+                    //     id: otherUser.id,
+                    //     username: otherUser.username
+                    //   } : null
+                    // });
+
+                    const displayName = otherUser?.full_name || otherUser?.username || 'Unknown User';
+                    
+                    return (
+                      <button
+                        key={dm.channelId}
+                        onClick={() => setCurrentChat({
+                          type: 'dm',
+                          id: dm.channelId,
+                          name: displayName
+                        })}
+                        className={`w-full text-left px-2 py-1 rounded text-black bg-indigo-50 hover:bg-indigo-100 ${
+                          currentChat?.id === dm.channelId
+                            ? 'bg-indigo-100'
+                            : ''
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center space-x-2">
+                            <span className="text-black">{displayName}</span>
+                            {otherUser && <UserPresence userId={otherUser.id} size="sm" />}
+                          </div>
                         </div>
-                      </div>
-                    </button>
-                  )
-                })}
+                      </button>
+                    );
+                  });
+              })()}
             </div>
           )}
         </div>
