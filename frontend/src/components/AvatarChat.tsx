@@ -329,7 +329,7 @@ export function AvatarChat({ className = '' }: AvatarChatProps) {
       {/* Sidebar */}
       <div className="w-64 bg-gray-50 border-r flex flex-col overflow-hidden">
         {/* Scrollable user list section */}
-        <div className="flex-1 p-4 overflow-y-auto">
+        <div className="flex-1 p-4 overflow-y-auto scrollbar-none hover:scrollbar-thin scrollbar-track-transparent scrollbar-thumb-indigo-600/40 hover:scrollbar-thumb-indigo-600/60 [&::-webkit-scrollbar-thumb]:rounded [&::-webkit-scrollbar-thumb]:min-h-[40px]">
           <div className="mb-6">
             <h2 className="text-lg font-bold text-black mb-4">Target User</h2>
             <UserList
@@ -373,17 +373,13 @@ export function AvatarChat({ className = '' }: AvatarChatProps) {
             Loading user summary...
           </div>
         ) : targetUser ? (
-          <>
-            <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-indigo-600 scrollbar-track-transparent hover:scrollbar-thumb-indigo-500">
-              <MessageList
-                channelId={targetUser.channelId}
-                chatType="dm"
-                chatName={targetUser.username}
-                onSendMessage={handleSendMessage}
-                messages={displayMessages}
-              />
-            </div>
-          </>
+          <MessageList
+            channelId={targetUser.channelId}
+            chatType="dm"
+            chatName={targetUser.username}
+            onSendMessage={handleSendMessage}
+            messages={displayMessages}
+          />
         ) : (
           <div className="flex-1 flex items-center justify-center text-gray-500">
             Select a target user to start chatting

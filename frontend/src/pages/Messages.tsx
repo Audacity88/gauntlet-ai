@@ -289,173 +289,155 @@ export default function Messages() {
   return (
     <div className="flex h-full">
       {/* Channels List */}
-      <div className="w-64 bg-gray-50 border-r p-4">
-        {/* Channels Section */}
-        <div className="mb-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-bold text-black">Channels</h2>
-            <div className="flex items-center space-x-2">
-              <button
-                onClick={() => refreshChannels()}
-                className="p-1.5 bg-indigo-600 text-white rounded hover:bg-indigo-700"
-                aria-label="Reload channels"
-              >
-                <svg
-                  className="w-5 h-5"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                  xmlns="http://www.w3.org/2000/svg"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-                  />
-                </svg>
-              </button>
-              <button
-                onClick={handleCreateChannel}
-                className="px-3 py-1 bg-indigo-600 text-white rounded hover:bg-indigo-700"
-              >
-                + New
-              </button>
-            </div>
-          </div>
-
-          {channelsLoading ? (
-            <div className="text-black">Loading channels...</div>
-          ) : channelsError ? (
-            <div className="text-red-500">Error: {channelsError.message}</div>
-          ) : (
-            <div className="space-y-2">
-              {Array.from(channels.values()).map(channel => (
-                <div 
-                  key={channel.id}
-                  className="flex items-center justify-between group"
-                >
+      <div className="w-64 bg-gray-50 border-r flex flex-col overflow-hidden">
+        {/* Scrollable sections container */}
+        <div className="flex-1 overflow-y-auto">
+          {/* Channels Section */}
+          <div className="p-4">
+            <div className="mb-6">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-bold text-black">Channels</h2>
+                <div className="flex items-center space-x-2">
                   <button
-                    onClick={() => handleChannelClick(channel)}
-                    className={`flex-1 text-left px-2 py-1 rounded text-black bg-indigo-50 hover:bg-indigo-100 ${
-                      currentChat?.id === channel.id
-                        ? 'bg-indigo-100'
-                        : ''
-                    }`}
+                    onClick={() => refreshChannels()}
+                    className="p-1.5 bg-indigo-600 text-white rounded hover:bg-indigo-700"
+                    aria-label="Reload channels"
                   >
-                    # {channel.slug}
-                  </button>
-                  {currentUser && channel.created_by === currentUser.id && (
-                    <button
-                      onClick={() => handleDeleteChannel(channel.id)}
-                      className="hidden group-hover:block px-2 py-1 text-red-500 hover:text-red-700 bg-indigo-50 hover:bg-indigo-100 rounded-r"
+                    <svg
+                      className="w-5 h-5"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                      xmlns="http://www.w3.org/2000/svg"
                     >
-                      ×
-                    </button>
-                  )}
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                      />
+                    </svg>
+                  </button>
+                  <button
+                    onClick={handleCreateChannel}
+                    className="px-3 py-1 bg-indigo-600 text-white rounded hover:bg-indigo-700"
+                  >
+                    + New
+                  </button>
                 </div>
-              ))}
-            </div>
-          )}
-        </div>
+              </div>
 
-        {/* Direct Messages Section */}
-        <div>
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-bold text-black">Direct Messages</h2>
-          </div>
-
-          {dmsLoading ? (
-            <div className="text-black">Loading messages...</div>
-          ) : dmsError ? (
-            <div className="text-red-500">Error: {dmsError.message}</div>
-          ) : !dmChannels || dmChannels.size === 0 ? (
-            <div className="text-gray-500">No direct messages yet</div>
-          ) : (
-            <div className="space-y-2">
-              {(() => {
-                // console.log('Rendering DM channels:', {
-                //   dmChannelsSize: dmChannels.size,
-                //   isMap: dmChannels instanceof Map,
-                //   entries: getDMChannelsArray(dmChannels).map(([userId, dm]) => ({
-                //     userId,
-                //     channelId: dm.channelId,
-                //     hasMembers: Boolean(dm.members),
-                //     memberCount: dm.members?.length
-                //   }))
-                // });
-
-                return getDMChannelsArray(dmChannels)
-                  .filter(([_, dm]) => {
-                    const isValid = dm && dm.channelId && dm.members;
-                    if (!isValid) {
-                      console.log('Filtered out DM:', {
-                        hasData: Boolean(dm),
-                        hasChannelId: Boolean(dm?.channelId),
-                        hasMembers: Boolean(dm?.members)
-                      });
-                    }
-                    return isValid;
-                  })
-                  .map(([userId, dm]) => {
-                    // Find the other member's profile
-                    const otherMember = dm.members.find((m: { user_id: string; profile: User }) => {
-                      // Check if this member is NOT the current user by comparing email/username
-                      const isCurrentUser = m.profile.username === currentUser?.email;
-                      return !isCurrentUser;
-                    });
-                    
-                    const otherUserProfile = otherMember?.profile;
-                    
-                    // console.log('DM member profiles:', {
-                    //   channelId: dm.channelId,
-                    //   currentUserEmail: currentUser?.email,
-                    //   members: dm.members.map((m: { user_id: string; profile: User }) => ({
-                    //     userId: m.user_id,
-                    //     username: m.profile?.username,
-                    //     fullName: m.profile?.full_name,
-                    //     isCurrentUser: m.profile.username === currentUser?.email
-                    //   }))
-                    // });
-
-                    const displayName = otherUserProfile?.full_name || otherUserProfile?.username || 'Unknown User';
-                    
-                    return (
+              {channelsLoading ? (
+                <div className="text-black">Loading channels...</div>
+              ) : channelsError ? (
+                <div className="text-red-500">Error: {channelsError.message}</div>
+              ) : (
+                <div className="space-y-2 max-h-[250px] overflow-y-auto scrollbar-none hover:scrollbar-thin scrollbar-track-transparent scrollbar-thumb-indigo-600/40 hover:scrollbar-thumb-indigo-600/60 [&::-webkit-scrollbar-thumb]:rounded [&::-webkit-scrollbar-thumb]:min-h-[40px]">
+                  {Array.from(channels.values()).map(channel => (
+                    <div 
+                      key={channel.id}
+                      className="flex items-center justify-between group"
+                    >
                       <button
-                        key={dm.channelId}
-                        onClick={() => setCurrentChat({
-                          type: 'dm',
-                          id: dm.channelId,
-                          name: displayName
-                        })}
-                        className={`w-full text-left px-2 py-1 rounded text-black bg-indigo-50 hover:bg-indigo-100 ${
-                          currentChat?.id === dm.channelId
+                        onClick={() => handleChannelClick(channel)}
+                        className={`flex-1 text-left px-2 py-1 rounded text-black bg-indigo-50 hover:bg-indigo-100 ${
+                          currentChat?.id === channel.id
                             ? 'bg-indigo-100'
                             : ''
                         }`}
                       >
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center space-x-2">
-                            <span className="text-black">{displayName}</span>
-                            {otherUserProfile && <UserPresence userId={otherUserProfile.id} size="sm" />}
-                          </div>
-                        </div>
+                        # {channel.slug}
                       </button>
-                    );
-                  });
-              })()}
+                      {currentUser && channel.created_by === currentUser.id && (
+                        <button
+                          onClick={() => handleDeleteChannel(channel.id)}
+                          className="hidden group-hover:block px-2 py-1 text-red-500 hover:text-red-700 bg-indigo-50 hover:bg-indigo-100 rounded-r"
+                        >
+                          ×
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
-          )}
-        </div>
 
-        {/* User List Section */}
-        <div className="mt-6">
-          <h2 className="text-lg font-bold text-black mb-4">All Users</h2>
-          <UserList
-            onUserSelect={handleCreateDM}
-            showPresence={true}
-            filter="all"
-          />
+            {/* Direct Messages Section */}
+            <div className="mb-6">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-bold text-black">Direct Messages</h2>
+              </div>
+
+              {dmsLoading ? (
+                <div className="text-black">Loading messages...</div>
+              ) : dmsError ? (
+                <div className="text-red-500">Error: {dmsError.message}</div>
+              ) : !dmChannels || dmChannels.size === 0 ? (
+                <div className="text-gray-500">No direct messages yet</div>
+              ) : (
+                <div className="space-y-2 max-h-[120px] overflow-y-auto scrollbar-none hover:scrollbar-thin scrollbar-track-transparent scrollbar-thumb-indigo-600/40 hover:scrollbar-thumb-indigo-600/60 [&::-webkit-scrollbar-thumb]:rounded [&::-webkit-scrollbar-thumb]:min-h-[40px]">
+                  {(() => {
+                    return getDMChannelsArray(dmChannels)
+                      .filter(([_, dm]) => {
+                        const isValid = dm && dm.channelId && dm.members;
+                        if (!isValid) {
+                          console.log('Filtered out DM:', {
+                            hasData: Boolean(dm),
+                            hasChannelId: Boolean(dm?.channelId),
+                            hasMembers: Boolean(dm?.members)
+                          });
+                        }
+                        return isValid;
+                      })
+                      .map(([userId, dm]) => {
+                        const otherMember = dm.members.find((m: { user_id: string; profile: User }) => {
+                          const isCurrentUser = m.profile.username === currentUser?.email;
+                          return !isCurrentUser;
+                        });
+                        
+                        const otherUserProfile = otherMember?.profile;
+                        const displayName = otherUserProfile?.full_name || otherUserProfile?.username || 'Unknown User';
+                        
+                        return (
+                          <button
+                            key={dm.channelId}
+                            onClick={() => setCurrentChat({
+                              type: 'dm',
+                              id: dm.channelId,
+                              name: displayName
+                            })}
+                            className={`w-full text-left px-2 py-1 rounded text-black bg-indigo-50 hover:bg-indigo-100 ${
+                              currentChat?.id === dm.channelId
+                                ? 'bg-indigo-100'
+                                : ''
+                            }`}
+                          >
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center space-x-2">
+                                <span className="text-black">{displayName}</span>
+                                {otherUserProfile && <UserPresence userId={otherUserProfile.id} size="sm" />}
+                              </div>
+                            </div>
+                          </button>
+                        );
+                      });
+                  })()}
+                </div>
+              )}
+            </div>
+
+            {/* User List Section */}
+            <div>
+              <h2 className="text-lg font-bold text-black mb-4">All Users</h2>
+              <div className="max-h-[330px] overflow-y-auto scrollbar-none hover:scrollbar-thin scrollbar-track-transparent scrollbar-thumb-indigo-600/40 hover:scrollbar-thumb-indigo-600/60 [&::-webkit-scrollbar-thumb]:rounded [&::-webkit-scrollbar-thumb]:min-h-[40px]">
+                <UserList
+                  onUserSelect={handleCreateDM}
+                  showPresence={true}
+                  filter="all"
+                />
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 

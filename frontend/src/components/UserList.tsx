@@ -150,7 +150,7 @@ export function UserList({
   }
 
   return (
-    <div className="space-y-4 scrollbar-thin scrollbar-thumb-white scrollbar-track-indigo-600 hover:scrollbar-thumb-gray-100">
+    <div className="space-y-4 scrollbar-none hover:scrollbar-thin scrollbar-track-transparent scrollbar-thumb-indigo-600/40 hover:scrollbar-thumb-indigo-600/60 [&::-webkit-scrollbar-thumb]:rounded [&::-webkit-scrollbar-thumb]:min-h-[40px]">
       <div className="space-y-1">
         {filteredUsers.map(user => (
           <div

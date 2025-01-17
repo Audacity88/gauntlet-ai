@@ -234,7 +234,7 @@ export const MessageList = memo(function MessageList({ channelId, chatType, chat
             <SearchBar onSearch={handleSearch} placeholder="Search messages..." />
           </div>
 
-          <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-4 space-y-4">
+          <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-none hover:scrollbar-thin scrollbar-track-transparent scrollbar-thumb-indigo-600/40 hover:scrollbar-thumb-indigo-600/60 [&::-webkit-scrollbar-thumb]:rounded [&::-webkit-scrollbar-thumb]:min-h-[40px]">
             {/* No results message when searching */}
             {searchQuery && messages.length === 0 && !isLoading && (
               <div className="flex flex-col items-center justify-center py-8 text-gray-500">
