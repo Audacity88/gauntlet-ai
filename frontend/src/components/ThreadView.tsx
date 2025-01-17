@@ -41,7 +41,7 @@ export function ThreadView({ parentMessage, onClose }: ThreadViewProps) {
         </h2>
         <button
           onClick={onClose}
-          className="px-3 py-1 text-gray-600 hover:text-gray-800 rounded"
+          className="px-3 py-1 text-white bg-indigo-600 hover:bg-indigo-700 rounded focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
         >
           Close
         </button>

@@ -340,7 +340,7 @@ export function useRealtimeMessages({
     const subscriptionId = `realtime:${table}:${channelId}`;
     let isCurrentSubscription = true;
 
-    // Clean up any existing subscription with the same ID
+    // Clean up any existing subscription
     if (subscriptionRef.current) {
       console.log('Cleaning up existing subscription:', subscriptionId);
       subscriptionRef.current.unsubscribe();
@@ -348,34 +348,22 @@ export function useRealtimeMessages({
       subscriptionRef.current = null;
     }
 
-    // Clean up only unrelated subscriptions
-    supabase.getChannels().forEach(channel => {
-      // Don't clean up the current channel's subscription
-      if (!channel.topic.includes(`:${channelId}`)) {
-        console.log('Cleaning up unrelated subscription:', channel.topic);
-        supabase.removeChannel(channel);
-      }
-    });
-
     console.log('Setting up realtime subscription:', {
       table,
       channelId,
       subscriptionId,
-      chatType,
-      parentId
+      chatType
     });
 
     const channel = supabase
       .channel(subscriptionId)
       .on(
-        'postgres_changes' as any,
+        'postgres_changes',
         {
           event: '*',
           schema: 'public',
           table,
-          filter: chatType === 'dm' 
-            ? `channel_id=eq.${channelId}` 
-            : `channel_id=eq.${channelId}`
+          filter: `channel_id=eq.${channelId}`
         },
         async (payload: RealtimePostgresChangesPayload<any>) => {
           if (!isCurrentSubscription) {
@@ -393,17 +381,6 @@ export function useRealtimeMessages({
               content: payload.new?.content,
               timestamp: new Date().toISOString()
             });
-
-            // For channel messages, check parent_id after receiving the event
-            if (chatType === 'channel' && parentId) {
-              if (payload.new?.parent_id !== parentId) {
-                console.log('Ignoring message - wrong parent_id');
-                return;
-              }
-            } else if (chatType === 'channel' && !parentId && payload.new?.parent_id) {
-              console.log('Ignoring thread message');
-              return;
-            }
 
             // Handle message deletion
             if (eventType === 'DELETE') {
@@ -437,15 +414,17 @@ export function useRealtimeMessages({
                   `)
                   .eq('id', messageId)
                   .is('deleted_at', null)
+                  .single()
               : supabase
                   .from('messages')
                   .select(`
                     *,
                     profile:profiles(*)
                   `)
-                  .eq('id', messageId);
+                  .eq('id', messageId)
+                  .single();
 
-            const { data: messageWithUser, error } = await query.single();
+            const { data: messageWithUser, error } = await query;
 
             if (error) {
               console.error('Error fetching message details:', error);
@@ -473,8 +452,6 @@ export function useRealtimeMessages({
                 user: processedMessage.user || processedMessage.profile
               });
 
-              handleRealtimeUpdate(processedMessage);
-              
               if (eventType === 'INSERT') {
                 setMessages(prev => {
                   // Avoid duplicate messages
@@ -538,7 +515,6 @@ export function useRealtimeMessages({
     subscriptionRef.current = channel;
 
     return () => {
-      console.log('Cleaning up subscription:', subscriptionId);
       isCurrentSubscription = false;
       if (subscriptionRef.current) {
         subscriptionRef.current.unsubscribe();
@@ -546,7 +522,7 @@ export function useRealtimeMessages({
         subscriptionRef.current = null;
       }
     };
-  }, [user, channelId, chatType, parentId]);
+  }, [user, channelId, chatType, updateMessages]);
 
   const sendMessage = useCallback(
     async (

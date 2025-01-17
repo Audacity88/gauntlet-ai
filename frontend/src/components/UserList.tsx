@@ -150,7 +150,7 @@ export function UserList({
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 scrollbar-thin scrollbar-thumb-white scrollbar-track-indigo-600 hover:scrollbar-thumb-gray-100">
       <div className="space-y-1">
         {filteredUsers.map(user => (
           <div

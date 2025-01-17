@@ -179,10 +179,6 @@ export function AvatarChat({ className = '' }: AvatarChatProps) {
     }
 
     try {
-      // First send the message using the common functionality
-      const messageResult = await sendMessage(content);
-      console.log('User message sent successfully');
-
       // Get current session for avatar API request
       const { data: { session }, error: sessionError } = await supabase.auth.getSession()
       if (sessionError) {
@@ -202,7 +198,7 @@ export function AvatarChat({ className = '' }: AvatarChatProps) {
         historyLength: messageHistory.length
       })
 
-      // Make API request to avatar service
+      // Make API request to get avatar's response - this will also create the user's message
       const response = await fetch('http://localhost:8000/api/chat/send', {
         method: 'POST',
         headers: {
@@ -235,8 +231,8 @@ export function AvatarChat({ className = '' }: AvatarChatProps) {
       const data = await response.json()
       console.log('Received avatar response:', data)
       
-      // Send the avatar's response
-      await sendMessage(data.content)
+      // The avatar API will handle creating the response message in the database
+      // No need to call sendMessage again
     } catch (error) {
       console.error('Error in handleSendMessage:', error)
       setChatError(error instanceof Error ? error.message : 'An error occurred')
@@ -350,7 +346,7 @@ export function AvatarChat({ className = '' }: AvatarChatProps) {
           <div className="space-y-4">
             <button
               onClick={handleClearContext}
-              className="w-full px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700"
+              className="w-full px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
             >
               Clear Context
             </button>
@@ -378,7 +374,7 @@ export function AvatarChat({ className = '' }: AvatarChatProps) {
           </div>
         ) : targetUser ? (
           <>
-            <div className="flex-1 overflow-y-auto">
+            <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-indigo-600 scrollbar-track-transparent hover:scrollbar-thumb-indigo-500">
               <MessageList
                 channelId={targetUser.channelId}
                 chatType="dm"
