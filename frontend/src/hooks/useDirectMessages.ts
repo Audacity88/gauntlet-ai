@@ -168,35 +168,59 @@ export function useDirectMessages() {
       const channelMap = new Map();
       channels.forEach(channel => {
         // Find the other member (not the current user)
-        const otherMember = channel.members.find(m => m.user_id !== user.id);
-        if (!otherMember) {
-          console.log('No other member found for channel:', channel.id);
+        const otherMember = channel.members.find(m => {
+          const isOtherUser = m.user_id !== user.id;
+          const memberProfile = m.profile;
+          console.log('Checking member:', {
+            memberId: m.user_id,
+            isCurrentUser: m.user_id === user.id,
+            username: memberProfile?.username,
+            fullName: memberProfile?.full_name
+          });
+          return isOtherUser;
+        });
+
+        if (!otherMember?.profile) {
+          console.log('No other member or profile found for channel:', channel.id);
           return;
         }
 
-        // Get the other user's profile from the members array
-        const otherUserProfile = channel.members.find(m => m.user_id === otherMember.user_id)?.profile;
-        if (!otherUserProfile) {
-          console.log('No profile found for other member:', otherMember.user_id);
-          return;
-        }
+        const otherUserProfile = {
+          id: otherMember.user_id,
+          username: otherMember.profile.username,
+          full_name: otherMember.profile.full_name,
+          avatar_url: otherMember.profile.avatar_url
+        };
+
+        console.log('Found other member:', {
+          channelId: channel.id,
+          otherMemberId: otherMember.user_id,
+          username: otherUserProfile.username,
+          fullName: otherUserProfile.full_name
+        });
 
         const channelMessages = messages
           ? messages.filter(m => m.channel_id === channel.id).map(m => ({
               ...m,
               sender: m.profile,
-              receiver: otherUserProfile // Use the other user's profile as receiver
+              receiver: m.user_id === user.id ? otherUserProfile : m.profile
             }))
           : [];
 
+        // Store the channel with the other user's profile
         channelMap.set(otherMember.user_id, {
           messages: channelMessages,
           otherUserId: otherMember.user_id,
-          otherUserProfile, // Add the other user's profile
+          otherUserProfile,
           channelId: channel.id,
           members: channel.members.map(m => ({
             user_id: m.user_id,
-            profile: m.profile
+            profile: {
+              id: m.user_id,
+              username: m.profile.username,
+              full_name: m.profile.full_name,
+              avatar_url: m.profile.avatar_url
+            }
           }))
         });
       });
@@ -204,10 +228,13 @@ export function useDirectMessages() {
       console.log('Processed channels:', {
         channelMapSize: channelMap.size,
         channelIds: Array.from(channelMap.values()).map(c => c.channelId),
-        firstChannel: channelMap.size > 0 ? {
-          ...Array.from(channelMap.values())[0],
-          messages: Array.from(channelMap.values())[0].messages.length + ' messages'
-        } : null
+        channels: Array.from(channelMap.values()).map(c => ({
+          channelId: c.channelId,
+          otherUser: {
+            username: c.otherUserProfile.username,
+            fullName: c.otherUserProfile.full_name
+          }
+        }))
       });
 
       // Set the conversations map directly

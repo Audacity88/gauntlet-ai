@@ -200,10 +200,13 @@ export default function Messages() {
     try {
       const channelId = await createDirectMessage(selectedUser.username)
       
+      // Set the display name consistently using full name first
+      const displayName = selectedUser.full_name || selectedUser.username || 'Unknown User';
+      
       setCurrentChat({
         type: 'dm',
         id: channelId,
-        name: selectedUser.full_name || selectedUser.username || 'Unknown User'
+        name: displayName
       })
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Failed to create direct message')
@@ -395,17 +398,27 @@ export default function Messages() {
                     return isValid;
                   })
                   .map(([userId, dm]) => {
-                    const otherUser = getOtherUser(dm.members);
-                    // console.log('Processing DM entry:', {
-                    //   userId,
-                    //   channelId: dm.channelId,
-                    //   otherUser: otherUser ? {
-                    //     id: otherUser.id,
-                    //     username: otherUser.username
-                    //   } : null
-                    // });
+                    // Find the other member's profile
+                    const otherMember = dm.members.find((m: { user_id: string; profile: User }) => {
+                      // Check if this member is NOT the current user by comparing email/username
+                      const isCurrentUser = m.profile.username === currentUser?.email;
+                      return !isCurrentUser;
+                    });
+                    
+                    const otherUserProfile = otherMember?.profile;
+                    
+                    console.log('DM member profiles:', {
+                      channelId: dm.channelId,
+                      currentUserEmail: currentUser?.email,
+                      members: dm.members.map((m: { user_id: string; profile: User }) => ({
+                        userId: m.user_id,
+                        username: m.profile?.username,
+                        fullName: m.profile?.full_name,
+                        isCurrentUser: m.profile.username === currentUser?.email
+                      }))
+                    });
 
-                    const displayName = otherUser?.full_name || otherUser?.username || 'Unknown User';
+                    const displayName = otherUserProfile?.full_name || otherUserProfile?.username || 'Unknown User';
                     
                     return (
                       <button
@@ -424,7 +437,7 @@ export default function Messages() {
                         <div className="flex items-center justify-between">
                           <div className="flex items-center space-x-2">
                             <span className="text-black">{displayName}</span>
-                            {otherUser && <UserPresence userId={otherUser.id} size="sm" />}
+                            {otherUserProfile && <UserPresence userId={otherUserProfile.id} size="sm" />}
                           </div>
                         </div>
                       </button>

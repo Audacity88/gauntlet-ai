@@ -196,15 +196,15 @@ export function UserList({
             <div className="flex-1 min-w-0">
               <div className="flex items-center justify-between">
                 <p className="text-sm font-medium text-black truncate">
-                  {user.username}
+                  {user.full_name || user.username}
                   {user.id === currentUser?.id && (
                     <span className="ml-2 text-xs text-gray-500">(You)</span>
                   )}
                 </p>
               </div>
-              {user.full_name && (
+              {user.username && user.full_name && (
                 <p className="text-xs text-gray-500 truncate">
-                  {user.full_name}
+                  @{user.username}
                 </p>
               )}
             </div>
