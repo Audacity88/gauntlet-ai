@@ -344,7 +344,18 @@ export function useRealtimeMessages({
     if (subscriptionRef.current) {
       console.log('Cleaning up existing subscription:', subscriptionId);
       subscriptionRef.current.unsubscribe();
+      supabase.removeChannel(subscriptionRef.current);
+      subscriptionRef.current = null;
     }
+
+    // Clean up only unrelated subscriptions
+    supabase.getChannels().forEach(channel => {
+      // Don't clean up the current channel's subscription
+      if (!channel.topic.includes(`:${channelId}`)) {
+        console.log('Cleaning up unrelated subscription:', channel.topic);
+        supabase.removeChannel(channel);
+      }
+    });
 
     console.log('Setting up realtime subscription:', {
       table,
@@ -502,6 +513,22 @@ export function useRealtimeMessages({
         if (!isCurrentSubscription) return;
         if (err) {
           console.error('Message subscription error:', err);
+          // If we get a "Too many channels" error, try to clean up and retry
+          if (err.message?.includes('Too many channels')) {
+            console.log('Too many channels, cleaning up and retrying...');
+            // Clean up all channels except the current one
+            supabase.getChannels().forEach(ch => {
+              if (ch.topic !== subscriptionId) {
+                supabase.removeChannel(ch);
+              }
+            });
+            // Retry subscription after cleanup
+            setTimeout(() => {
+              if (isCurrentSubscription) {
+                channel.subscribe();
+              }
+            }, 1000);
+          }
         } else {
           console.log('Subscription status:', status);
         }
@@ -515,10 +542,11 @@ export function useRealtimeMessages({
       isCurrentSubscription = false;
       if (subscriptionRef.current) {
         subscriptionRef.current.unsubscribe();
+        supabase.removeChannel(subscriptionRef.current);
         subscriptionRef.current = null;
       }
     };
-  }, [user?.id, channelId, chatType, parentId, updateMessages, handleRealtimeUpdate]);
+  }, [user, channelId, chatType, parentId]);
 
   const sendMessage = useCallback(
     async (

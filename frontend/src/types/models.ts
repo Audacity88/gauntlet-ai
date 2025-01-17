@@ -90,8 +90,28 @@ export const messageAttachmentSchema = baseEntitySchema.extend({
 });
 
 // Extended types with relationships
-export interface MessageWithUser extends BaseMessage {
+export interface MessageWithUser {
+  id: string;
+  channel_id: string;
+  user_id: string;
+  content: string;
+  created_at: string;
+  updated_at: string;
+  deleted_at?: string | null;
+  attachments?: any[] | null;
+  message_type: string;
+  parent_id?: string | null;
   user: User;
+  metadata?: {
+    is_avatar_response?: boolean;
+    is_introduction?: boolean;
+    model?: string;
+    usage?: {
+      prompt_tokens: number;
+      completion_tokens: number;
+      total_tokens: number;
+    };
+  };
 }
 
 export const messageWithUserSchema = baseMessageSchema.extend({

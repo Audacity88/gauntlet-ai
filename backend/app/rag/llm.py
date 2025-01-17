@@ -150,3 +150,61 @@ Message: {query}
         except Exception as e:
             logger.error(f"Error generating stream response: {str(e)}")
             yield f"data: {json.dumps({'error': str(e)})}\n\n" 
+
+    async def generate_user_summary(
+        self,
+        context: str = "",
+        username: str = ""
+    ) -> Dict[str, Any]:
+        """Generate a summary of user interactions.
+        
+        Args:
+            context: Previous message history and interactions
+            username: Username of the target user
+            
+        Returns:
+            Dictionary containing:
+            - content: Generated summary text
+            - model: Model used for generation
+            - usage: Token usage statistics
+        """
+        try:
+            # Create a specialized prompt for user summary
+            summary_prompt = f"""Based on these previous interactions and messages:
+
+{context}
+
+Please provide a brief, friendly introduction of yourself as {username}, written in first person.
+Focus on:
+1. Your typical tone and formality level
+2. Common topics or interests you discuss
+3. Notable patterns in your messages
+4. How you typically interact with others
+
+Keep it concise and natural, as if you're introducing yourself to someone new. Start with a friendly greeting and write in first person (using "I", "me", "my")."""
+
+            # Use chat completions for summary generation
+            response = await self.client.chat.completions.create(
+                model=self.model_name,
+                messages=[
+                    {"role": "system", "content": DEFAULT_SYSTEM_PROMPT},
+                    {"role": "user", "content": summary_prompt}
+                ],
+                temperature=self.temperature,
+                frequency_penalty=0.3,
+                presence_penalty=0.3
+            )
+
+            return {
+                "content": response.choices[0].message.content,
+                "model": self.model_name,
+                "usage": {
+                    "prompt_tokens": response.usage.prompt_tokens,
+                    "completion_tokens": response.usage.completion_tokens,
+                    "total_tokens": response.usage.total_tokens
+                }
+            }
+
+        except Exception as e:
+            logger.error(f"Error generating user summary: {str(e)}")
+            raise Exception(f"Error generating user summary: {str(e)}") 

@@ -110,7 +110,8 @@ async def create_user_message(
 
 async def create_avatar_message(
     db: Client,
-    user_id: UUID4,
+    target_user_id: UUID4,
+    current_user_id: UUID4,
     channel_id: str,
     content: str,
     llm_response: Dict[str, Any]
@@ -119,8 +120,8 @@ async def create_avatar_message(
     try:
         message = await create_message(
             db,
-            user_id,  # From user (avatar)
-            user_id,  # Use user's profile_id
+            target_user_id,  # The avatar's user ID
+            target_user_id,  # The avatar's profile ID
             MessageCreate(
                 content=content,
                 channel_id=channel_id,
@@ -128,8 +129,8 @@ async def create_avatar_message(
                 metadata={
                     "is_avatar_response": True,
                     "is_introduction": True,
-                    "model": llm_response["model"],
-                    "usage": llm_response["usage"]
+                    "model": llm_response.get("model"),
+                    "usage": llm_response.get("usage", {})
                 }
             )
         )
@@ -201,6 +202,7 @@ async def send_message(
         avatar_message = await create_avatar_message(
             db,
             request.target_user_id,
+            current_user.id,  # Pass current user's ID for profile_id
             channel_id,
             llm_response["content"],
             llm_response
@@ -272,6 +274,7 @@ async def get_user_summary(
         avatar_message = await create_avatar_message(
             db,
             request.target_user_id,
+            current_user.id,
             channel_id,
             llm_response["content"],
             llm_response

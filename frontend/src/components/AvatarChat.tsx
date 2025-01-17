@@ -30,10 +30,8 @@ interface MessageSender {
 
 export function AvatarChat({ className = '' }: AvatarChatProps) {
   const [targetUser, setTargetUser] = useState<TargetUser | null>(null);
-  const [isStreaming, setIsStreaming] = useState(false);
   const [messageId, setMessageId] = useState<string | null>(null);
   const [messageHistory, setMessageHistory] = useState<MessageHistory[]>([]);
-  const [streamedResponse, setStreamedResponse] = useState<string>('');
   const [chatError, setChatError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const { user: currentUser } = useAuth();
@@ -47,6 +45,18 @@ export function AvatarChat({ className = '' }: AvatarChatProps) {
   } = useRealtimeMessages({
     channelId: targetUser?.channelId || '',
     chatType: 'dm'  // Always use DM mode
+  });
+
+  // Find the most recent summary message
+  const latestSummary = messages?.find(msg => 
+    msg.metadata?.is_avatar_response && 
+    msg.metadata?.is_introduction
+  );
+
+  // Filter messages to only show those after the summary
+  const displayMessages = messages?.filter(msg => {
+    if (!latestSummary) return true;
+    return new Date(msg.created_at) >= new Date(latestSummary.created_at);
   });
 
   // Fetch user's message history when selected
@@ -82,9 +92,6 @@ export function AvatarChat({ className = '' }: AvatarChatProps) {
       setMessageHistory([]); // Reset message history
       setChatError(null);
 
-      // Fetch user's message history
-      await fetchMessageHistory(user.id);
-
       // Create or get existing DM channel
       const channelId = await createDirectMessage(user.username);
 
@@ -94,31 +101,53 @@ export function AvatarChat({ className = '' }: AvatarChatProps) {
         throw new Error('No active session or missing access token');
       }
 
-      // Make API request to get user summary
-      const requestBody = {
-        target_user_id: user.id,
-        mode: 'direct'
-      };
-      console.log('Sending user summary request:', requestBody);
-      
-      const response = await fetch('http://localhost:8000/api/chat/user_summary', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`
-        },
-        body: JSON.stringify(requestBody)
-      });
+      // Check if there's already an introduction message for this user
+      const { data: existingMessages, error: messagesError } = await supabase
+        .from('direct_messages')
+        .select('*')
+        .eq('channel_id', channelId)
+        .eq('metadata->is_avatar_response', true)
+        .eq('metadata->is_introduction', true)
+        .is('deleted_at', null)  // Only consider non-deleted messages
+        .order('created_at', { ascending: false })
+        .limit(1);
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('Error getting user summary:', {
-          status: response.status,
-          statusText: response.statusText,
-          error: errorText,
-          requestBody
+      if (messagesError) {
+        console.error('Error checking for existing introduction:', messagesError);
+      }
+
+      // Only make the API call if there's no existing introduction
+      if (!existingMessages?.length) {
+        console.log('No existing introduction found, requesting user summary...');
+        
+        // Make API request to get user summary
+        const requestBody = {
+          target_user_id: user.id,
+          mode: 'direct'
+        };
+        console.log('Sending user summary request:', requestBody);
+        
+        const response = await fetch('http://localhost:8000/api/chat/user_summary', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`
+          },
+          body: JSON.stringify(requestBody)
         });
-        throw new Error(errorText);
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error('Error getting user summary:', {
+            status: response.status,
+            statusText: response.statusText,
+            error: errorText,
+            requestBody
+          });
+          throw new Error(errorText);
+        }
+      } else {
+        console.log('Found existing introduction, skipping user summary request');
       }
 
       // Wait for channel to be fully created and members added
@@ -133,7 +162,7 @@ export function AvatarChat({ className = '' }: AvatarChatProps) {
     } finally {
       setIsLoading(false);
     }
-  }, [createDirectMessage, fetchMessageHistory]);
+  }, [createDirectMessage]);
 
   const formatMessageHistory = useCallback((messages: MessageHistory[]) => {
     return messages.map(msg => ({
@@ -174,7 +203,7 @@ export function AvatarChat({ className = '' }: AvatarChatProps) {
       })
 
       // Make API request to avatar service
-      const response = await fetch(isStreaming ? 'http://localhost:8000/api/chat/stream' : 'http://localhost:8000/api/chat/send', {
+      const response = await fetch('http://localhost:8000/api/chat/send', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -203,45 +232,18 @@ export function AvatarChat({ className = '' }: AvatarChatProps) {
         headers: Object.fromEntries(response.headers.entries())
       })
 
-      if (isStreaming) {
-        const reader = response.body?.getReader()
-        if (!reader) {
-          throw new Error('Failed to get response reader')
-        }
-
-        let streamedContent = ''
-        while (true) {
-          const { done, value } = await reader.read()
-          if (done) break
-
-          const text = new TextDecoder().decode(value)
-          console.log('Received stream chunk:', text)
-          streamedContent += text
-          // Update UI with streamed content
-          setStreamedResponse(streamedContent)
-        }
-
-        console.log('Stream complete, sending avatar response')
-        // Send the avatar's response
-        await sendMessage(streamedContent)
-      } else {
-        const data = await response.json()
-        console.log('Received avatar response:', data)
-        
-        // Send the avatar's response
-        await sendMessage(data.content)
-      }
+      const data = await response.json()
+      console.log('Received avatar response:', data)
+      
+      // Send the avatar's response
+      await sendMessage(data.content)
     } catch (error) {
       console.error('Error in handleSendMessage:', error)
       setChatError(error instanceof Error ? error.message : 'An error occurred')
       // Display error in UI
       alert(error instanceof Error ? error.message : 'An error occurred while sending the message')
     }
-  }, [targetUser, sendMessage, messageId, isStreaming, messageHistory]);
-
-  const handleToggleStreaming = useCallback(() => {
-    setIsStreaming(prev => !prev);
-  }, []);
+  }, [targetUser, sendMessage, messageId, messageHistory]);
 
   const handleClearContext = useCallback(async () => {
     if (!targetUser?.channelId) {
@@ -308,7 +310,6 @@ export function AvatarChat({ className = '' }: AvatarChatProps) {
       // Reset state
       setMessageId(null);
       setMessageHistory([]);
-      setStreamedResponse('');
       setChatError(null);
 
       // Force a complete reload of the chat
@@ -347,22 +348,6 @@ export function AvatarChat({ className = '' }: AvatarChatProps) {
         {/* Fixed controls section */}
         <div className="p-4 border-t bg-gray-50">
           <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-medium text-gray-700">Streaming Mode</span>
-              <button
-                onClick={handleToggleStreaming}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full ${
-                  isStreaming ? 'bg-indigo-600' : 'bg-gray-200'
-                }`}
-              >
-                <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition ${
-                    isStreaming ? 'translate-x-6' : 'translate-x-1'
-                  }`}
-                />
-              </button>
-            </div>
-
             <button
               onClick={handleClearContext}
               className="w-full px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700"
@@ -375,8 +360,8 @@ export function AvatarChat({ className = '' }: AvatarChatProps) {
               <div className="space-y-2 text-sm text-gray-600">
                 <p>Target: {targetUser?.username || 'Not set'}</p>
                 <p>Message ID: {messageId || 'None'}</p>
-                <p>Streaming: {isStreaming ? 'On' : 'Off'}</p>
                 <p>History: {messageHistory.length} messages</p>
+                <p>Summary: {latestSummary ? 'Available' : 'None'}</p>
                 {isLoading && <p className="text-indigo-600">Loading user summary...</p>}
                 {chatError && <p className="text-red-500">Error: {chatError}</p>}
               </div>
@@ -399,6 +384,7 @@ export function AvatarChat({ className = '' }: AvatarChatProps) {
                 chatType="dm"
                 chatName={targetUser.username}
                 onSendMessage={handleSendMessage}
+                messages={displayMessages}
               />
             </div>
           </>
