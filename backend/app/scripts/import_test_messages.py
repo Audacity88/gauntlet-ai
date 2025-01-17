@@ -101,12 +101,33 @@ def parse_messages(file_path: Path) -> List[Dict[str, Any]]:
             content = ' '.join(content_lines) if content_lines else username
                 
             try:
-                dt = datetime.strptime(timestamp, '%m/%d/%y, %I:%M %p')
-                messages.append({
-                    'username': username,
-                    'content': content,
-                    'timestamp': dt.isoformat()
-                })
+                # Try different timestamp formats
+                dt = None
+                try:
+                    # Try MM/DD/YY, HH:MM AM/PM format
+                    dt = datetime.strptime(timestamp, '%m/%d/%y, %I:%M %p')
+                except ValueError:
+                    try:
+                        # Try "Yesterday at HH:MM AM" format
+                        if timestamp.startswith('Yesterday at '):
+                            time_str = timestamp.replace('Yesterday at ', '')
+                            time_part = datetime.strptime(time_str, '%I:%M %p').time()
+                            dt = datetime.combine(datetime.now().date() - timedelta(days=1), time_part)
+                        # Try "Today at HH:MM AM" format
+                        elif timestamp.startswith('Today at '):
+                            time_str = timestamp.replace('Today at ', '')
+                            time_part = datetime.strptime(time_str, '%I:%M %p').time()
+                            dt = datetime.combine(datetime.now().date(), time_part)
+                    except ValueError:
+                        print(f"Error parsing timestamp {timestamp}")
+                        continue
+                
+                if dt:
+                    messages.append({
+                        'username': username,
+                        'content': content,
+                        'timestamp': dt.isoformat()
+                    })
             except Exception as e:
                 print(f"Error parsing timestamp {timestamp}: {e}")
                 continue
@@ -215,10 +236,10 @@ async def get_or_create_user_and_profile(client: Client, username: str) -> Tuple
             print(f"Looking for existing profile for username: {username}")
             response = client.table('profiles').select("*").eq("username", username).execute()
             response_data = response.data if hasattr(response, 'data') else []
-            print(f"Profile search response: {response_data}")
+            # print(f"Profile search response: {response_data}")
             if response_data:
                 existing_profile = response_data[0]
-                print(f"Found existing profile: {existing_profile}")
+                print(f"Found existing profile")
                 return {"id": existing_profile["id"]}, existing_profile
         except Exception as e:
             print(f"Error searching for profile: {str(e)}")
@@ -251,7 +272,7 @@ async def get_or_create_user_and_profile(client: Client, username: str) -> Tuple
                     headers=headers,
                     json=user_data
                 )
-                print(f"Auth user creation response: {response.text}")
+                # print(f"Auth user creation response: {response.text}")
                 if response.status_code == 201:
                     user_response = response.json()
                     user_id = user_response["id"]
@@ -271,7 +292,7 @@ async def get_or_create_user_and_profile(client: Client, username: str) -> Tuple
                     else:
                         raise Exception(f"Failed to fetch existing user: {response.text}")
                 else:
-                    raise Exception(f"Failed to create auth user: {response.text}")
+                    raise Exception(f"Failed to create auth user")
             
             # Now create the profile
             profile_data = {
@@ -436,11 +457,17 @@ async def import_messages(messages: List[Dict[str, Any]], file_path: Path) -> No
 
 async def main() -> None:
     """Main function to run the import script"""
-    # Get the path to the test messages file
-    file_path = Path(__file__).parent.parent / "rag" / "data" / "test_messages.tsv"
+    import argparse
+    
+    parser = argparse.ArgumentParser(description='Import messages from a TSV file into Supabase')
+    parser.add_argument('file_path', type=str, help='Path to the TSV file containing messages')
+    args = parser.parse_args()
+    
+    # Convert the input path to a Path object
+    file_path = Path(args.file_path)
     
     if not file_path.exists():
-        raise FileNotFoundError(f"Test messages file not found at {file_path}")
+        raise FileNotFoundError(f"Message file not found at {file_path}")
         
     # Parse messages from the file
     messages = parse_messages(file_path)

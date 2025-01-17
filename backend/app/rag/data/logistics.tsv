@@ -1,0 +1,254 @@
+Mikael — 12/30/24, 2:15 AM
+https://docs.google.com/document/d/1gvgCGN5BPWCBCARkDWgCj4iUGWVsrysyOsHkaDUKQuM/edit?tab=t.0
+Google Docs
+Gauntlet Questions
+This doc has a bunch of questions we’re curious about. We are super excited to learn more We thought a doc would be the easiest way for you to answer questions rapid-fire, and also allow anyone to see the answers We understand if some details are still being worked out. Feel free to put answers...
+Image
+Thread
+FAQ Running Doc
+1 Message ›
+Roger Hunt - Ideatrek/HooveDAO
+18d ago
+HypnosisFuca — 12/30/24, 2:23 AM
+Gauntlet AI Info session Webinar Recording -https://bloomtech.zoom.us/rec/share/HC4cqkUXf6L_anXwENtYQsUNSe_MzyOUYduSLOSyIGYUx6m-R11RAbHQ9p4emc7k.I-cLYnY-msB73Vnw 
+Thread
+Meeting Recordngs
+1 Message ›
+Roger Hunt - Ideatrek/HooveDAO
+18d ago
+Info Session 2 Webinar Recording - https://bloomtech.zoom.us/rec/play/FyaUq-U_OVOioNVBfKAhfyCsv-NO5nyMmu589WsOQZ96ue3I0iOs4FIGIHPBY-xcF9aHBLLfg1rLjjNh.b6mKI_WFSXIGUhho
+Roger Hunt - Ideatrek/HooveDAO — 12/30/24, 2:31 AM
+This is SUPER HELFUL, can we make it its own channel
+Kay — 12/30/24, 3:18 AM
+amazing thx
+Roger Hunt - Ideatrek/HooveDAO — 12/30/24, 4:19 AM
+Hey we’re not running any LLMs locally right, so we can bring burner laptops??
+Kay — 12/30/24, 5:29 AM
+i wouldn't think so but we may
+Roger Hunt - Ideatrek/HooveDAO — 12/30/24, 5:37 AM
+Hmmm…can we add that to the list of questions
+
+ALSO, since we’re moving to Austin.  We will need to secure mortgages, find a place, close and furnish.
+
+I bet the company will put us up until we find something, BUT they might also co-sign a mortgage or help us find property/relocation package.
+
+Like should my wife start looking at places now?  Or will there be time to do that before moving?
+
+What if we live in the US but want to move to Greenland or whatever and work remote?
+turing_hamster — 12/30/24, 9:16 AM
+laptop does not need to be super strong because we will mostly use LLMs via API
+
+they will provide housing during gauntlet but not sure how long we wil lhave ot find more permanent housing afterward
+
+the jobs are mostly in Austin only, and there are a few exceptions for Europe people but those people already have their exceptions arranged
+Roger Hunt - Ideatrek/HooveDAO — 12/30/24, 9:19 AM
+So enough to have docker, Postgres, Python, VS…anything else??
+500gb at least
+turing_hamster — 12/30/24, 9:20 AM
+that should be plenty
+Roger Hunt - Ideatrek/HooveDAO — 12/30/24, 9:21 AM
+Any other env applications you can think of?
+turing_hamster — 12/30/24, 9:25 AM
+depends on your preferred tech stack but you covered pretty much everything. editor, database, preferred language(s), and docker 😋
+Roger Hunt - Ideatrek/HooveDAO — 12/30/24, 5:30 PM
+Living Thread 
+Thread
+Living Thread
+9 Messages ›
+thisistheaj
+13d ago
+Roger Hunt - Ideatrek/HooveDAO — 12/30/24, 5:31 PM
+Equipment Thread
+Thread
+Equipment Thread
+8 Messages ›
+Roger Hunt - Ideatrek/HooveDAO
+Click to see attachment
+15d ago
+Roger Hunt - Ideatrek/HooveDAO — 12/30/24, 5:32 PM
+Managing Family Expectations
+Thread
+Managing Family Expectations
+29 Messages ›
+turing_hamster
+15d ago
+Roger Hunt - Ideatrek/HooveDAO started a thread: Meeting Recordngs. See all threads. — 12/30/24, 5:34 PM
+Roger Hunt - Ideatrek/HooveDAO started a thread: FAQ Running Doc. See all threads. — 12/30/24, 5:34 PM
+turing_hamster pinned a message to this channel. See all pinned messages. — 12/31/24, 4:51 AM
+Mikael — 1/3/25, 2:20 AM
+Anyone knows the exacte date we are expected to fly to Austin (basically this would be the date to give up our lease).
+I see some dates like remote phase Jan 6th - Feb 2nd and Austin phase Feb 3rd - Mar 28th. 
+But unsure if this means "yes have your appartment until feb 3rd cause you will be flying that day" or not
+Ryan — 1/3/25, 2:21 AM
+From the way they make it sound is the 2nd or 3rd we’ll be flying out, idk about exact times or which specific day it’ll be, I’m assuming they don’t know that either tho right now
+Mikael — 1/3/25, 2:21 AM
+sounds good yea. I messaged Alec but just wanted to check here in case anyone had some clarity on exact date. I will reach back out here if he replies with more infos
+Mikael — 1/3/25, 2:41 AM
+Ok he said "Right now the plan is for February 3rd to be the travel day! So I'd recommend having Feb 3rd be the last day on your lease if you're looking to run it up to that" 
+
+and he added "Just FYI - Feb 3 date could change... but that is what's most likely right now. I don't anticipate it being later"
+BD — 1/4/25, 4:04 AM
+https://docs.google.com/document/d/1q0zK-EfBQsGlw9UWYVqAs83vvYdvabRP8tGhnX7jLAE/edit?tab=t.0#heading=h.njvl3or15s6k
+Google Docs
+Public Copy - V4 Gauntlet Curriculum
+V4 Gauntlet AI Program Design Overview This table outlines Gauntlet AI, an intensive 12-week AI engineering crucible that transforms ambitious developers into elite AI engineers through a series of increasingly challenging projects. Project Breakdown Each project represents a gauntlet of its ...
+Image
+turing_hamster pinned a message to this channel. See all pinned messages. — 1/4/25, 4:06 AM
+SA — 1/4/25, 9:50 PM
+We'll be reimbursed for stuff we spend on ai tools right? Should I cop cursor now or later?
+Roger Hunt - Ideatrek/HooveDAO — 1/4/25, 9:51 PM
+Don’t buy anything
+They will issue us all keys and subs
+Practice building just using chatgpt and structure the build on your own, so you get a feel under the hood then the tools they give us will be that much more awesome
+TB — 1/4/25, 9:54 PM
+What are y'alls logistical plans for moving out to Austin, you can't exactly move all you stuff to a hotel room
+SA — 1/4/25, 9:55 PM
+Gotcha, I've been working with V0 for the slack clone, but i'm running into roadblocks with Row Level Security (something i know nothing about).
+Image
+SA — 1/4/25, 9:55 PM
+Not gonna bring too much except clothes and my laptop, i'll bring stuff(like my ps5) if i get the job offer
+Roger Hunt - Ideatrek/HooveDAO — 1/4/25, 9:55 PM
+We’re getting hired by these companies so they will def have plans in place with relo and I bet even help fast tracking a mortgage
+Roger Hunt - Ideatrek/HooveDAO — 1/4/25, 9:56 PM
+7 tee shirts, 10 underwear, 2 track pants, pair of jeans, flip flops, sneakers, 5 socks, hoodie
+Laptop
+Cell phone
+Inhaler
+TB — 1/4/25, 9:57 PM
+Im renting a place in my current city, so I'm thinking I just keep renting the place and leave all my stuff there from feb to march, and then once the actual job starts I rent a place in Austin and go back and get all my stuff and bring it to Austin
+or put it all in a storage container
+John Holmes — 1/4/25, 10:50 PM
+If I make it I’m basically just bringing enough to last 2 weeks and assuming I can do laundry on premises.
+thisistheaj — 1/5/25, 2:02 AM
+There’s a storage company called cube smart that has locations all over Austin for storing stuff if you want to bring your stuff now — if you want to wait and see if the company will help later that’s obviously an option too.
+When I moved Philly => Austin a few years back I used this company called “pods”, that’s technically a storage company but they have branches all over the US and you can pay them to move your pod from one location to another.
+And unlike the self storage options, they literally drop what is essentially a high quality shipping container in front of your place and then move it either into storage or somewhere else. They were easy to work with, would recommend if you need
+TB — 1/5/25, 2:29 AM
+awesome, ill look into that, thanks!
+HypnosisFuca — 1/6/25, 1:22 AM
+https://www.reddit.com/r/texas/comments/1grxqur/the_austin_tx_rental_market_is_collapsing_before/
+
+Perfect time to move
+Reddit
+From the texas community on Reddit: The Austin, TX rental market is...
+Explore this post and more from the texas community
+From the texas community on Reddit: The Austin, TX rental market is...
+fake austen
+APP
+ — 1/6/25, 1:22 AM
+i think the rental market collapsing is a good thing for us it means we can get better deals on housing for our participants in the gauntlet program
+turing_hamster — 1/6/25, 1:23 AM
+i wish every city would take a lesson from Austin and just let people build more housing
+TomH — 1/6/25, 2:02 AM
+the whole of the uk needs to learn that
+benji — 1/6/25, 2:16 AM
+Texas does have the major advantage of infinite land. I used to live in St. Pete, FL and even though they try to build more housing, there’s only so much room on the peninsula
+TomH — 1/6/25, 2:25 AM
+that is why we need to recreate doggerland
+thisistheaj — 1/6/25, 2:40 AM
+Texas also has crazy few zoning laws. Outside the city you can build yourself a dubious shack and live in it and it’s totally legal. Kind of wild
+But good for innovation
+TomH — 1/6/25, 2:42 AM
+a lifetime in england with extortionate housing costs has pretty much turned me full nimby so
+yimby lol*
+turing_hamster — 1/6/25, 2:44 AM
+it is a blessing that us americans sometimes take for granted that we can easily move to another state with laws that we prefer
+HypnosisFuca — 1/6/25, 2:48 AM
+...and weather we prefer (no offense to my English friends)
+
+Winters in the Northeast suck
+TomH — 1/6/25, 2:51 AM
+i guess i am used to the weather mostly but texas does sound appealing rn after three days of rain here
+Kay — 1/6/25, 3:27 AM
+honestly i miss the cold dark winters of Boston
+Dai — 1/6/25, 3:27 AM
+i do not 😅
+Kay — 1/6/25, 3:27 AM
+after having lived in the Texas desert for 4 years
+thisistheaj — 1/6/25, 3:48 AM
+Convinced that central/east Texas have 2nd best weather in the states after only socal. And if you like it on the warmer side like me, it’s basically a veritable paradise
+And Austin itself is the most verdant and well planted large city in Texas
+Dallas and Houston are both concrete jungles in desert and swamp respectively
+So bullish on ATX y’all are gonna love it here (unless you need a winter to be happy)
+HypnosisFuca — 1/6/25, 3:52 AM
+plus no wildfires like SoCal or hurricanes like Florida
+thisistheaj — 1/6/25, 3:52 AM
+And although SF and NY are theoretically better food cities just due to sheer volume, I find Austin has a significantly better ratio of signal to noise — a lot easier to find great restaurants, and it still is big enough to have pretty much every global cuisine
+thisistheaj — 1/6/25, 3:52 AM
+Yeah, no tornadoes, hurricanes wildfires, earthquakes. 
+
+Droughts are the only potential risk for natural disaster and here that’s still less of an issue than further west
+HypnosisFuca — 1/6/25, 3:53 AM
+dude I'm gonna eat sooooooo much bbq
+thisistheaj — 1/6/25, 3:54 AM
+It’s also just full of people who get shit done — no one does too much political signaling here whether right or left leaning. Great for actual builders
+/ rant
+… in case you guys couldn’t tell — I really like ATX lol
+sterling — 1/6/25, 4:14 AM
+now to just buy some land and slap a gauntlet campus on it
+thisistheaj — 1/6/25, 4:22 AM
+Honestly would be down
+John Holmes — 1/6/25, 4:22 AM
+I've spent time in Austin and I like it but spent more time in Houston and it can be lovely if you're in the right places.
+thisistheaj — 1/6/25, 4:22 AM
+I was trying to find out if cabin DAO is still a thing or not — in which case we could just invade the next cohort
+Ryan Heron — 1/6/25, 4:22 AM
+atx is cool except fuck texas and texas weather
+thisistheaj — 1/6/25, 4:22 AM
+Either during the program or for when we start the actual jobs
+Ryan Heron — 1/6/25, 4:25 AM
+i can at least find the website for it so… probably?
+Kay — 1/6/25, 4:42 AM
+the best part of Houston is the exit
+BD — 1/6/25, 5:01 AM
+Also, you know, learn to cook your fav meals 👨‍🍳
+Anthony Harley — 1/6/25, 5:24 AM
+For Texas people! Just curious what’s the good and bad parts of Austin and surrounding areas?  Definitely some mixed reactions on Ashton but I’m super excited for it. Thinking of living a bit south closer to San Antonio but curious to hear thoughts!!
+Ryan Heron — 1/6/25, 5:36 AM
+i live in schertz, which is on that i-35 strip between sa and austin. new braunfels has good events and the river is nice but theres honestly limited stuff to do if you're not in either city proper. otherwise no notes
+@Anthony Harley
+thisistheaj — 1/6/25, 7:56 AM
+I do cook all my favorite meals, yes.
+Ryan — 1/6/25, 9:24 AM
+is everyone bringing a mouse and keyboard?
+Dai — 1/6/25, 9:24 AM
+for sure
+liebling — 1/6/25, 9:24 AM
+I am a Real Linux User and only use shell commands to pilot the cursor.
+Dai — 1/6/25, 9:24 AM
+vim mode or bust
+astrid — 1/6/25, 9:26 AM
+linux is so 2024, personally i connected my cursor to my neuralink and i control it with my mind
+turing_hamster — 1/6/25, 9:31 AM
+i get repetitive motion injury from a mouse so i always just use trackpad 😂
+Ryan — 1/6/25, 9:32 AM
+im sure we'll all be there by the end of this
+BD — 1/6/25, 9:34 AM
+Two mice. One for each hand.
+Mikael — 1/6/25, 10:03 AM
+I also type with my nose
+Tim — 1/6/25, 10:04 AM
+Two Penguin mouses and a Kinesis keyboard
+bjorn — 1/6/25, 10:05 AM
+BD — 1/6/25, 10:30 AM
+Chicken mode
+Harmony — 1/6/25, 10:41 AM
+Actual footage of me working
+Josh — 1/7/25, 3:50 AM
+Depends on age. I'm probably going to look at Mueller or East Austin. East Austin is expensive but that's where the 25+ hang out and it's less sketchy.
+thisistheaj — 1/7/25, 3:51 AM
+East Austin is super nice
+Josh — 1/7/25, 3:51 AM
+Would stay away from dirty 6th, it used to be fun and fairly safe, but the last few times I've had to dodge bullets.
+And that's also mostly under 21 college students
+thisistheaj — 1/7/25, 3:52 AM
+If you are renting and want something g cheaper you can also look just across the river in the “riverside” neighborhood. Easy to live there and take a like scooter over to east Austin for social things
+Josh — 1/7/25, 3:53 AM
+I hope we get to have a couple bar nights during this thing.
+Michael Watts — 1/7/25, 3:53 AM
+we have two months in person
+some people have names set on their Cursor account. How do I do that?
+Behnam — 1/7/25, 3:58 AM
+I live up in the Mueller area, highly recommend. Other neighborhoods I'd recommend: Hyde Park, Cherrywood/Chestnut, E. Cesar Chavez (basically reiterating Josh's rec, +1 for East Austin) 💕
+liebling — 1/7/25, 5:17 AM
+Probably from their emails. I used a gmail IE.

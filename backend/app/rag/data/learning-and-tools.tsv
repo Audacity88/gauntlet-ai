@@ -1,0 +1,980 @@
+Joris — 1/15/25, 4:55 AM
+By the way,  just typing "do a code review" and "do a security review" after cursor compose does something seems to have a high impact/effort ratio to me. (I wonder though if one can somehow feed the patch generated into chat with the o1 model...)
+How are you doing tests right now? Doing this end-to-end (e.g. making a test where a user clicks an emoji reaction and it increases the count, and click it again to decrease it) seems insanely complicated to me compared to trying it out. Is it?
+thisistheaj — 1/15/25, 5:06 AM
+like everything, setting it up is the complicated part and is not worth it for one test but is worth it eventually
+Joris — 1/15/25, 5:10 AM
+So what framework do you use? What was the order of magnitude of effort for you?
+thisistheaj — 1/15/25, 5:15 AM
+i didnt implement testing because it would not be worth the effort for now
+lol 😅
+if i did, i would use cypress. magnitude would be similar to setting up auth probably
+so like .5-1.5 days if some things go wrong
+∅ — 1/15/25, 5:18 AM
+1 day slippage if some things go wrong is fucking real
+thisistheaj — 1/15/25, 5:18 AM
+yepp
+so for speed build the impetus is to err on the side of sidestepping your known unknowns
+BD — 1/15/25, 5:38 AM
+arch question ... why does the server connect directly to the database if you also have a /database app? I would have thought that the /server would have leveraged /db for speaking with the db
+Asher — 1/15/25, 5:40 AM
+No clue, AI recommened it and this is what it told me when i asked
+
+The database service focuses on running the database engine
+The server handles all application logic and database queries
+Having another application layer would create unnecessary network hops and complexity
+Asher — 1/15/25, 5:41 AM
+Have any recommendations? Afaik you are the only person whos used it to start a project
+BD — 1/15/25, 5:41 AM
+ah yeah, that makes sense. the database is literally the database itself. Yep, I'm on board
+BD — 1/15/25, 5:42 AM
+I will
+Asher — 1/15/25, 5:43 AM
+Working on docs and AI workflow rn
+bjorn — 1/15/25, 5:45 AM
+@turing_hamster what are you using for tts? i'm thinking of using eleven labs
+Marx — 1/15/25, 5:49 AM
+for anyone that has experience in firebase, i thought this would be a simple issue, but its taken days now and the llms think everything is fine. hopefully the solution is something simple im just ignorant of. I'm trying to run my firebase functions, but im getting this error:
+
+Failed to load resource: the server responded with a status of 401 ()Understand this errorAI
+LGChat.js:78 Full error object: FirebaseError: The function must be called while authenticated.
+
+it is telling me i need to be authenticated to do it. however, i am fully authenticated. ive logged in, and firebase storage is pulling the documents associated with the account. so i know that other firebase services are working. ive deleted the account and remade it, so i know auth isnt broken. and the way callable functions work from my understanding is firebase does the token work on their end. so nothing i add to my code has influenced the the token being sent.
+
+ Every time i try to use the function, the token is sent, and then firebase denies it. i know the token is correct. its the one firebase is generating and pulling itself from its own auth.
+
+the llms have suggested mostly environment issues. ive checked every one theyve suggested. 
+
+does anyone have any experience that could point me in a new direction to solve this? it seems like such a dumb problem lol
+thisistheaj — 1/15/25, 5:51 AM
+My guess was also environment issues at first — is this for all of jury firebase functions or one of them in particular ? 
+turing_hamster — 1/15/25, 6:05 AM
+fish.audio
+sterling — 1/15/25, 6:10 AM
+https://x.com/karinanguyen_/status/1879270529066262733?s=46
+Karina Nguyen (@karinanguyen_) on X
+We're excited to introduce Tasks! For the first time, ChatGPT can manage tasks asynchronously on your behalf—whether it's a one-time request or an ongoing routine. Here are my favorite use cases:
+
+1/ ChatGPT checks stock price every morning!
+Karina Nguyen (@karinanguyen_) on X
+
+Twitter•1/15/25, 4:53 AM
+Marx — 1/15/25, 6:17 AM
+its for all of the firebase functions ive made. i did notice just now though that they are all v2 except for OnUserCreate which I dont remember making. is that one firebase makes for auth on your behalf? its v1. could that be an issue in anyway? 
+
+"OnUserCreate" does not exist in my code. it has to be a firebase thing right?
+turing_hamster — 1/15/25, 6:21 AM
+is your code in a public github?
+@Marx also we can hop in voice channel, i have a couple things i wanna try
+thisistheaj — 1/15/25, 6:29 AM
+I haven’t used firebase in a bit but irrc the auth for functions is different than for db access
+Aren’t function calls supposed to be from an admin environment or something like that?
+Marx — 1/15/25, 6:38 AM
+it isnt in a public github. i can always share my screen tho. and id love that thank you. were you thinking now?
+Marx — 1/15/25, 6:38 AM
+oh interesting. is this the giving all users invoker access thing? something like that?
+turing_hamster — 1/15/25, 6:39 AM
+yes
+thisistheaj — 1/15/25, 6:49 AM
+Probably, although if I’m right, that’s likely not secure 😬
+turing_hamster — 1/15/25, 7:28 AM
+https://modularfirebase.web.app/reference/functions.getfunctions
+Jack — 1/15/25, 8:01 AM
+anyone figure out how to have similarity search disregard documents that are the same as the query? e.g. if i ask what's your favorite fruit then "what's your favorite fruit?" messages will be at the top of the similarity list
+∅ — 1/15/25, 8:02 AM
+ask chatgpt to do it 🙂
+turing_hamster — 1/15/25, 8:04 AM
+does pinecone return a similarity score? maybe filter out documents that are too similar to the point of being almost exactly the same
+Jack — 1/15/25, 8:05 AM
+full disclosure i haven't actually tried solving this issue, i just saw it and wondered if anyone else saw the same thing lmao
+thisistheaj — 1/15/25, 8:05 AM
+Yeah what Turing said
+Mine literally returns “0” as the score if they’re the same
+So you can use a lower bound
+∅ — 1/15/25, 8:06 AM
+it does
+peterl — 1/15/25, 9:54 AM
+been keeping this under my hat but if you're comfortable with JS, ValTown is a killer one-stop shop, for frontend/server/cron jobs/storage (sqlite and blobs), all with typescript and npm. you just write stuff and it's deployed by default
+https://www.val.town/
+Image
+sterling — 1/15/25, 9:56 AM
+Image
+peterl — 1/15/25, 9:57 AM
+with state! that tracks itself in a db
+假老外dan — 1/15/25, 11:29 PM
+I am getting the same with supabase. 401 issues over and over. Only progress I found so far has been by making cursor create a working document where it logs all the errors that it’s come across and the fixes
+giantpiston — 1/15/25, 11:39 PM
+this looks really cool. have you been using it since starting your project?
+Marx — Yesterday at 1:06 AM
+wow interesting. that fixed it? and is this working document something thats kept in your code?
+peterl — Yesterday at 1:22 AM
+i started mine on localhost and then moved it over this week. happy to get into if you want to try it out
+Palmer — Yesterday at 1:32 AM
+Posed this on Slack but will duplicate it here too:
+Putting a basic directive in your Cursor Notepad (if you have one you permanently attach to context like I do) can prevent against key leaks.
+Image
+Image
+假老外dan — Yesterday at 1:46 AM
+yes. I posted it in the #prompts slack channel
+sterling — Yesterday at 1:54 AM
+wait do you have md files for code explanation etc. that you made?
+Harmony — Yesterday at 1:58 AM
+**Class Session Summary**
+
+- **Project and Cohort Updates**  
+  - The cohort is moving quickly toward the Austin in-person session (about two weeks away). The goal remains to bring as many students as possible who submit work on time and meet the project requirements.  
+  - No major changes to the overall structure this week: finish a functional Slack rebuild with at least one integrated AI feature (e.g., persona, document lookup, or summary-based retrieval).
+Expand
+message.txt
+6 KB
+Ty @Ryan Heron  for the transcript
+Marx — Yesterday at 2:22 AM
+is that in the official gauntlet slack? im not in gauntlet so I cant see that
+Palmer — Yesterday at 3:08 AM
+That one in particular is a placeholder, but yes it's 100% doable if you want code explained to you in a certain format/style
+But, as an example, the bug-fix.md tells it to ask me for a link to the docs for the relevant library, instead of it just hammering away at different imports/edits.
+Made that one because I got sick of it trying to reference shadcn-ui when it's actually shadcn/ui.
+Palmer — Yesterday at 3:32 AM
+For anyone interested, here's a long ass Loom video where I go over:
+where Cursor Notepads are found
+how to make & use them
+some of the advantages I believe they have over .cursorrules
+a demo of how the contents of the file affect the responses I get from the Agent
+
+I recommend watching at 1.5x speed 🙂
+https://www.loom.com/share/791436a8ae554feab76df6f4070ab6ae?sid=76043638-fe8c-40d1-9064-947c6a45cf9b
+Loom
+Notepads and Cursor Tips 👀
+Hey there! In this video, I share my experience with using notepads and cursor rules to enhance chat context. Notepads have been my preferred method due to their simplicity and flexibility. I recommend trying out a basic setup to see how it improves your interaction with AI. Let's dive in!
+Image
+HypnosisFuca — Yesterday at 3:34 AM
+This is awesome. Thanks a ton for creating. 
+Asher — Yesterday at 3:51 AM
+I know youve been experimenting a lot with rules and docs, I think i might be overengineering my approach its having a hard time following all the steps, have you had better luck keeping it simple?
+Palmer — Yesterday at 3:52 AM
+Yes, I'm finding that keeping it simple is 100% the move.
+I've done a lot of overengineering the last few days with my files and their relationships.
+Asher — Yesterday at 3:55 AM
+Sounds good, time to remake my workflow again lol
+Palmer — Yesterday at 3:56 AM
+This is lowkey embarassing, but:
+I woke up at like 4am and couldn't go back to bed, and didn't feel like working, so I had a conversation with Cursor to get a better idea of what tools it has access to, and how they work.
+
+Some things I've learned/noticed:
+simplicity is key
+Notebooks are great for giving clear instructions and adding/removing them as context at-will
+Cursor grabs file context in 250-line chunks, so I now avoid having any files > 250 lines (and have it create a new file for anything that exceeds 250)
+use consistent, searchable patterns
+keep related code in single files when possible
+I also coaxed Cursor into telling me exactly what tools it (allegedly) has access to. I think understanding its capabilities is a good starting point for how you're handling your codebase:
+1. Code Search & Discovery
+- Semantic code search (codebase_search) to find relevant code snippets based on meaning
+- Text-based pattern search (grep_search) for finding exact matches or regex patterns
+- File path search (file_search) to locate files with fuzzy matching
+- Directory listing (list_dir) to explore the codebase structure
+
+2. File Operations
+- Read file contents (read_file) to analyze code, with ability to read specific line ranges
+- Edit existing files (edit_file) to modify code with precise changes
+- Delete files (delete_file) when needed
+- Reapply edits (reapply) if an edit needs to be attempted again with a smarter model
+
+3. Terminal Command Execution
+- Run terminal commands (run_terminal_cmd) with your approval
+- Execute commands in background when needed
+- Handle git operations and other CLI tasks
+- Maintain shell state between commands
+
+4. Batch Operations
+- Plan and execute parallel edits (parallel_apply) across multiple files
+- Apply similar changes to multiple locations efficiently
+- Handle up to 50 files in a single batch operation
+
+Each of these tools has specific parameters and best practices that I follow to ensure safe and effective code modifications.
+ 
+Asher — Yesterday at 3:58 AM
+Feels like you are doing all the hard work for us. Thank you so much
+Palmer — Yesterday at 3:59 AM
+No problem!
+I think it's really easy to not worry about this stuff. At the end of the day it could easily be like a < 10% benefit to have any of it.
+But this is the shit that keeps me up at night lol.
+Asher — Yesterday at 4:00 AM
+Idk I feel like for having a clean codebase over a longer period it will help with keeping tech debt low, so thank you
+Palmer — Yesterday at 4:15 AM
+Yeah, good point!
+Also, last dump, here are some guidelines I had it write.
+Add this to a file like codebase-organization-guide and at the very least you can reference it manually to have it check work in an area, maybe.
+# Codebase Organization Guide
+
+This guide outlines best practices for maintaining an AI-optimized codebase structure.
+
+## File Management
+
+### File Size and Structure
+Files should be kept under 250 lines to ensure complete context in single reads. When a file grows too large:
+- Split it into logical units
+- Maintain complete context within each unit
+- Add clear cross-references between split files
+
+### New File Creation
+When creating new files, follow this structure:
+1. Type definitions at the top
+2. Explicit section markers
+3. Summary block explaining purpose
+4. Grouped imports by purpose
+
+## Code Organization
+
+### Logical Units
+Code should be organized into clear, manageable units:
+- Keep related code within 250-line boundaries
+- Use standardized section markers for navigation
+- Keep dependencies in the same file when possible
+- Add explicit cross-references when code must be split
+
+## Naming Conventions
+
+### Functions
+Functions should have clear, descriptive names that:
+- Use explicit verbs (validate, handle, process)
+- Indicate clear purpose (e.g., validateUserCredentials)
+- Include type context where relevant
+
+### Variables
+Variable names should:
+- Use state prefixes (is, has, should)
+- Include type information
+- Maintain consistent terminology
+
+### Types
+Type names should be:
+- Explicit and descriptive (e.g., UserAuthenticationRequest)
+- Purpose-indicating
+- Consistent with domain vocabulary
+
+## Directory Structure
+
+### Root Organization
+The src/ directory should be organized by:
+- Features (main functionality modules)
+- Shared components (reusable UI elements)
+- Consistent internal structure
+
+### Feature Structure
+Each feature directory should contain:
+- components/ (UI components)
+- hooks/ (React hooks)
+- utils/ (utility functions)
+- types/ (TypeScript definitions)
+- README.md (feature documentation)
+
+## File Patterns
+
+### Component Files
+Component files should:
+- Follow naming pattern: feature-name.component.tsx
+- Include complete type definitions
+- Have explicit imports
+- Maintain single responsibility
+
+### Utility Files
+Utility files should:
+- Follow naming pattern: feature-name.utils.ts
+- Focus on a single purpose
+- Use named exports
+- Include comprehensive type annotations
+
+## Documentation
+
+### Code Comments
+Comments should include:
+- Standardized section markers
+- Complete dependency lists
+- Type information
+- Context explanations
+
+### README Files
+README documentation should:
+- Describe feature purpose
+- List all dependencies
+- Provide usage examples
+- Include type information
+
+## Best Practices
+
+Always:
+- Use explicit TypeScript types
+- Add clear semantic markers
+- Keep files under 250 lines
+- Include comprehensive documentation
+- Follow consistent patterns throughout the codebase 
+PartyPooper — Yesterday at 5:01 AM
+but cursor loves deleting comments
+Palmer — Yesterday at 5:51 AM
+Make a change-review.md file with all the things you want it to double-check, and before you press Approve, link it the file and ask it to cross-reference its changes with the rules outlined!
+ancientarchosaur — Yesterday at 6:17 AM
+Hmm, I tried this, but it disregarded my attempt to limit it to 250 line files. (Granted, that was a file I don't think would've made sense to split up.) 
+Palmer — Yesterday at 6:20 AM
+I’ll try this out myself and see if I can find a more reliable method!
+I could definitely see that one being a challenge in particular.. if it only reads 250 lines, I wonder how aware it even is of the length of the file. 
+
+I’ll experiment a bit & get back to you.
+Marcus — Yesterday at 6:46 AM
+When we're documenting code, how do we make sure our code blocks are properly updated?
+Ryan Heron — Yesterday at 8:01 AM
+tell it to update live in cursorrules and make a note in cursor notepad to reference cursorrules before each action
+Marcus — Yesterday at 8:04 AM
+Would it make sense to have a cursorrule about document every block you're doing? Also like separate documentation outside of the files or in the files?
+Asher — Yesterday at 8:08 AM
+This is what I've experienced now @Marcus
+citrini — Yesterday at 9:13 AM
+Thanks, just read through and watched your research into the notepads. Just to be clear, you have something like that codebase organization guide manually linked in all your context windows?
+Palmer — Yesterday at 10:03 AM
+I’ve tried a few different approaches, but right now I typically:
+have an Agent Rules Notepad attached to context at all times, containing a line that says something about “all changes should be made in accordance with @<link to codebase organization .md file>
+directly link the .md file after the Agent does something, if I notice it didn’t automatically follow the Notepad instructions
+ 
+The only 2 things I keep in permanent context are the Agent Rules (which @-references different supporting docs based on the task), and working-notes (which is a living document maintained by the AI that I’m using as a “state management” tool, to make sure it always has an easy reference for “what’s the current task?” and other things that I don’t want to fall out of context).
+And there’s no guarantee the Notepad will be followed just by being in context.
+
+To maximize adherence, I typically:
+start my first message by @-mentioning it directly
+just leave it in context for any prompts afterwards
+fire off another @-mention any time I notice the model straying away
+
+The @-mention is as easy as starting your prompt with “Per @Agent Rules, <whatever your prompt is>”.
+Palmer — Yesterday at 10:10 AM
+(Also supposedly it can handle like 10+ things in context, so looking forward to attaching a lot more contextual docs & seeing how easily it sticks to them)
+Asher — Yesterday at 10:38 AM
+Yup, ive been working on a brand new project today to figure out a workflow and i ended up with palmers basically
+Marcus — Yesterday at 12:36 PM
+Here's something that I found helpful in debugging the front end, maybe this is unnecessary. 
+
+Taking a picture of it, finding a color not on the page, and then coloring the issue say pink, and then telling cursor "Hey this pink part is a problem". 
+
+Like I even got it to put the search bar in the right place by saying "Hey make the search bar in this pink area"
+Image
+thisistheaj — Yesterday at 12:55 PM
+thats dope — i've done screenshot => prompt to get it to fix ui bugs — but didnt think to draw on it
+假老外dan — Yesterday at 2:42 PM
+oh! sorry, let me copy it here
+prompt: "Continue keeping track of the errors we find and the changes we make to fix them. Use @api_bug_fixing_notes.md to write down each error and the fix. Each time a new error occurs, note what led to it and give it a new name. Check @api_bug_fixing_notes.md before you make a fix to make sure it hasn't been done before, and to write down the status of the previous fix, including what error it failed with. Don't bother restarting the servers and testing, I will do that myself.
+
+Current error: File "uvloop/loop.pyx", line 1982, in create_connection
+socket.gaierror: [Errno 8] nodename nor servname provided, or not known"
+
+results attached
+# API Testing Notes
+
+## Database Connection Issues
+
+### Error 1: asyncpg Authentication Error
+```
+Expand
+api_bug_fix_notes.md
+17 KB
+Marx — Yesterday at 3:20 PM
+beautiful, thank you!!
+Palmer — Yesterday at 6:24 PM
+Okay I have tried SO many approaches to get around this, and it's REALLY hard.
+I don't think it's worth the effort, and the length of the instructions required to ensure a full read (~30 lines) probably has some contextual overhead.
+
+It looks to be a default behavior of Cursor that's really tough to get around.
+Maybe they'll make it more configurable in the future... but for now I'm leaving it out of my tool prompts and watching for large files myself.
+Asher — Yesterday at 11:53 PM
+Yeah, I’ve just been watching myself
+Harmony — Today at 1:10 AM
+Summary:
+
+Key Takeaways
+Goal for the next two weeks: Build a fast, production-grade MVP using a streamlined tech stack:
+Backend: Supabase (handles auth, concurrency, request volume, database, and edge functions).
+Frontend: React (most documented and widely supported).
+Deployment: AWS Amplify (easy hosting, quick CI/CD from GitHub).
+
+Why Supabase?
+It’s a “backend-as-a-service” (BaaS) that simplifies creating databases, managing auth, handling concurrency, and storing data.
+You can connect to Supabase from your React app using its SDK.
+Edge functions in Supabase can run your agents if you choose JavaScript/TypeScript.
+
+Why React?
+Highly documented, with plenty of tutorials and community support.
+Large ecosystem of component libraries (e.g., Material UI, Ant Design) to build MVPs quickly.
+
+Why AWS Amplify?
+Streamlined way to host frontends: it automatically builds and deploys from your GitHub repo.
+Provides additional features like storage (S3-like), serverless functions (Lambda-like), etc., all accessible in one place.
+
+AI/Agent Framework
+LangChain is recommended for quickly creating AI agents (Monday’s lesson).
+Can optionally use Amplify’s Lambda-like functions for Python-based agents or Supabase edge functions for JavaScript/TypeScript-based agents.
+
+Real-World Perspective
+In a real tech job, you’re typically given a tech stack, rather than choosing everything.
+This setup simulates that experience—React + Supabase + Amplify—so you can focus on quickly building functional AI apps rather than wrestling with configuration.
+
+Project Updates
+Current Slack project: no need to modify your existing Slack app.
+Upcoming “Zendesk” project: will use React + Supabase + Amplify + optional agent code on edge/serverless functions.
+Each project will be two weeks: one week building core features, one week adding AI functionality.
+
+Next Action Items
+Set Up Supabase
+Create a Supabase account (if you haven’t already).
+Familiarize yourself with creating tables, configuring auth, and using the Supabase SDK in React.
+Set Up AWS Amplify
+Create or link an AWS account with Amplify.
+Connect Amplify to a GitHub repo containing a simple React app.
+Verify that changes on your main (or staging) branch auto-deploy successfully.
+Build a Basic React Frontend
+Start with a simple “Hello World” or input form hitting your Supabase DB.
+Deploy it on Amplify so you have a working end-to-end skeleton.
+Voice/Video Integration (for Slack Project)
+If you’re adding voice features, use free tiers (e.g., ElevenLabs or Fish.audio) for TTS.
+Share your working demo in Slack to get feedback or higher-tier service if needed.
+Prepare for LangChain Lesson (Monday)
+Review any intro material on LangChain to understand how to create AI agents.
+Think about how your application might use an agent (e.g., ticket routing, summarizing, or Q&A).
+
+By Monday, aim to have:
+A basic React + Supabase + Amplify “Hello World” deployed.
+Familiarity with the Supabase platform (tables, auth).
+Questions ready about LangChain, agent deployment, or your specific AI use-cases.
+PartyPooper — Today at 2:43 AM
+vite + supabase template
+https://github.com/mmvergara/react-supabase-auth-template
+GitHub
+GitHub - mmvergara/react-supabase-auth-template: React Supabase Aut...
+React Supabase Auth template with Protected Routes - mmvergara/react-supabase-auth-template
+GitHub - mmvergara/react-supabase-auth-template: React Supabase Aut...
+uzi — Today at 5:17 AM
+This seems really good
+https://replicate.com/
+Run open-source machine learning models with a cloud API
+RobbyT — Today at 6:52 AM
+Maybe I'm late to the party, anyone have a good method of getting coherent test data in their DB to test the rag features? Randomly generated messages like "Store yard six boy evidence exactly western. Night free seat fine rock fight amount. Agree son present hear check per unit." and "Run wear child kind home very system everything. You clear choose writer rise. Age care over do single what." Are seemingly pretty retrievable, so I know its working, but some realistic conversations would probably be better. Before this I was using faker in python, just to see how it looks on the screen, but gibberish only goes so far.
+Tell claude to generate a long string of related messages separated with a special character, then just parse those out and insert them into my database? Maybe I just answered my own question, but if anyone has a better way, totally open to hearing it
+thisistheaj — Today at 6:59 AM
+About to do precisely that yeah
+Palmer — Today at 7:00 AM
+Scrape a subreddit?
+RobbyT — Today at 7:02 AM
+I definitely don't want any of that in my app
+I'd rather it spew incoherent words
+Palmer — Today at 7:02 AM
+HuggingFace Datasets?
+Visit huggingface.co/datasets
+Search for conversation datasets in your domain
+Many are free to use and already formatted
+Popular datasets include:
+daily_dialog: General conversations
+conv_ai_2: Human-AI conversations
+empathetic_dialogues: Emotional conversations
+
+(per Claude)
+RobbyT — Today at 7:02 AM
+sick dude, thanks
+Palmer — Today at 7:32 AM
+For anyone like me who's interested in the internals of Cursor:
+For files that are manually attached to context (but are not @-referenced), Cursor (claims it) uses the filename to determine whether or not it should actually read the file.
+So, based on your request, it may not bother reading what's in context if it thinks it has what it needs already!
+For this reason, I've added "ALWAYS READ" to the start of my Agent Rules file that I keep in permanent context, to increase its chances of being considered in any given scenario. 
+Also, I had Cursor dump the contents of my conversation into a .md file so I could share it with you guys.
+There's some redundant stuff in here, but basically this file covers the hierarchy of how files are considered in context, and how each one is accessed/utilized.
+Nothing groundbreaking, but maybe useful to keep in mind for any fellow min-maxers.
+# AI Memory and Context Understanding
+
+## Conversation Memory
+- Maintains memory of current conversation through message context
+- Each message includes user input and AI response
+- Limited to current session only
+Expand
+ai-memory-and-context.md
+6 KB
+joshualelon — Today at 10:23 AM
+it 100% is - heard about it on the peter levels + lex fridman podcast
+thisistheaj — 1/13/25, 6:11 AM
+Yeah for sure. I was more thinking of other armies, not just the US. I think people often take for granted the legitimacy and control of the hegemon of a particular region. But there is a certain usefulness to other lenses in certain cases (for example, is the incumbent MXN government “fighting cartels”, or has there been an ongoing civil war between 2 paramilitary organizations in the region, if you think about which organizations are functionally “keeping the peace” in touristic areas, the rabbit hole only gets more interesting the deeper you go) etc
+MisterSkeltal — 1/13/25, 7:16 AM
+The incumbent MXN government is owned and controlled by the cartels and has been for decades
+Asher — 1/13/25, 2:57 PM
+I made a template for the pern stack to make it easier to get started on the next project, figured I’d share it here in case anyone is interested. It’s not perfect but it’s something
+https://github.com/AsherMorse/PernStarterKit
+GitHub
+GitHub - AsherMorse/PernStarterKit: A modern full-stack starter kit...
+A modern full-stack starter kit featuring PostgreSQL, Express, React, and Node.js (PERN). Includes Docker configuration, authentication boilerplate, testing setup, and CI/CD scaffolding for rapid d...
+GitHub - AsherMorse/PernStarterKit: A modern full-stack starter kit...
+thisistheaj — 1/13/25, 10:59 PM
+This is dope. I think this is 100% the way to go. Don’t want to be setting up auth and stuff every time
+In either this or a fork — might be cool to include some of the aws specific stuff too
+∅ — 1/14/25, 12:19 AM
+t3 is good as well, if you're okay with a Next stack 
+bjorn — 1/14/25, 12:37 AM
+theo shill
+thisistheaj — 1/14/25, 12:38 AM
+lol
+does seem like best opinionated option for next (i dont like next tho)
+bjorn — 1/14/25, 12:38 AM
+yes i use it lol, it's great
+Stee — 1/14/25, 12:39 AM
+t3 👑
+∅ — 1/14/25, 12:43 AM
+have to pay karma
+∅ — 1/14/25, 12:43 AM
+express and next are basically the same thing 😭
+John Holmes — 1/14/25, 1:15 AM
+https://www.threads.net/@luokai/post/DEukBnDzwKB
+
+I want llama to get to this level but I'll just switch to Qwen2.5 for a lot of offline stuff
+Threads
+luokai (@luokai) on Threads
+The NovaSky team fine-tuned the open-source Qwen2.5-32B-Instruct model. The training lasted for 19 hours using 8 H100 GPUs, costing about $450 (priced according to Lambda Cloud). The resulting Sky-T1-32B-Preview model performs comparably to o1-preview in reasoning and coding benchmarks, demonstrating the possibility of efficiently replicating hi...
+luokai (@luokai) on Threads
+Harmony — 1/14/25, 1:32 AM
+**Meeting Summary**  
+1. **Purpose & Context**  
+   - The team discussed implementing **Retrieval Augmented Generation (RAG)** to enhance their Slack-based chat application with AI features.  
+   - RAG involves embedding chunks of text (e.g., user messages) in a vector database, retrieving relevant pieces based on user queries, and then passing those retrieved snippets into an LLM for more accurate and context-aware responses.  
+   - They emphasized the need to handle API keys and AWS credentials securely, as multiple breaches occurred where keys were inadvertently pushed to public repos.
+Expand
+jan13class.md
+5 KB
+thisistheaj — 1/14/25, 1:33 AM
+Confused  on what you mean — ceratianly Not if you’re using express without react ?
+Although fair point that PERN definitionally is
+∅ — 1/14/25, 1:33 AM
+I mean you can use next without react too...
+thisistheaj — 1/14/25, 1:34 AM
+Can you do long lived servers in next?
+∅ — 1/14/25, 1:34 AM
+yes, just not on vercel
+thisistheaj — 1/14/25, 1:34 AM
+Wait what. This is actual news to me
+∅ — 1/14/25, 1:35 AM
+/shrug yeah the api router supports get routes so you can just stuff templated responses in there if you want to
+thisistheaj — 1/14/25, 1:35 AM
+Hmmm interesting
+∅ — 1/14/25, 1:35 AM
+I'm using next + websockets on EC2.
+thisistheaj — 1/14/25, 1:35 AM
+Like, you can do it if you’re not on vercel or by default it’s long lived if not on vercel (and many consider this a bad thing)
+thisistheaj — 1/14/25, 1:36 AM
+That’s cool. That’s similar to what I did with remix then
+∅ — 1/14/25, 1:36 AM
+By default it's long-lived if not on vercel
+thisistheaj — 1/14/25, 1:36 AM
+Ah! Interesting
+Nobody’s docs makes that particularly clear 😂
+Shame on me for not deep diving
+∅ — 1/14/25, 1:37 AM
+in fact, I don't think serverless deployment is public
+thisistheaj — 1/14/25, 1:37 AM
+Oh really
+Maybe I’m just a dimbass here then
+For whatever reason I was under the impression that the canonical ways to deploy were verce or like, lambda or something
+I know dax has that whole thing about how you lose benefits deploying it elsewhere — but I assumed losing serverless deploy was not among that set because what would even be the point
+∅ — 1/14/25, 1:38 AM
+yeah there is, vercel, and then also aws has a lambda backed deployment option, but there's a lot of routing logic that doesn't ship with next.js so while it will in principle build you a serverless deployment it's like, a highly non-trivial process to actually deploy on your own infra
+thisistheaj — 1/14/25, 1:39 AM
+That basically makes next’s core value prop closed source for all intents and purposes
+∅ — 1/14/25, 1:39 AM
+well "serverless" and all its bells and whistles is considered the benefit.
+thisistheaj — 1/14/25, 1:39 AM
+I get why he hates vercel (the company) now
+∅ — 1/14/25, 1:39 AM
+yeah
+but next is still a nice framework. nice to be able to write once deploy... however
+thisistheaj — 1/14/25, 1:40 AM
+Yeah … probably solidifies my preference for remix tbh 😅
+BD — 1/14/25, 1:40 AM
+Can I use this? I need to get out of token hell
+thisistheaj — 1/14/25, 1:40 AM
+But I get why people like it
+∅ — 1/14/25, 1:40 AM
+and you'll get things like link prefetching if you use it... I think if you stick it in front of a CDN it manages the cache, etc.
+thisistheaj — 1/14/25, 1:40 AM
+I used Nuxt in prod for years at my last co
+Asher — 1/14/25, 1:40 AM
+Yeah everyone feel free
+BD — 1/14/25, 1:42 AM
+THANK YOU! Can I buy you a coffee? or a patreon 
+Asher — 1/14/25, 1:43 AM
+Haha no worries, nope just enjoy the project. Like i said, made it for myself
+BD — 1/14/25, 1:44 AM
+Do you have a .cursorrules that tells Claude not to fuck with the core bits?
+🙂
+Asher — 1/14/25, 1:45 AM
+Nope! Haven't used it yet, was just getting it ready for next week while i had time yesterday. Sorry, lmk if you find smt that works well tho
+BD — 1/14/25, 1:46 AM
+This is my most recent one. I'll probably ask claude to edit it to ensure (s)he behaves better going forward. https://github.com/brettdavies/ChatGenius/blob/main/.cursorrules
+John Holmes — 1/14/25, 1:49 AM
+Do you have summaries for pervious classes?
+Harmony — 1/14/25, 1:49 AM
+Should be in the history of this channel
+just search for messages by me
+John Holmes — 1/14/25, 1:50 AM
+Thanks! I need it to get caught up.
+ibrahim.py — 1/14/25, 2:39 AM
+https://youtu.be/tcqEUSNCn8I?si=o-VXHR2xfIFWc3n5
+YouTube
+pixegami
+RAG + Langchain Python Project: Easy AI/Chat For Your Docs
+Image
+Found this on youtube. Posting incase it's helpful to anyone
+MagicWizardPepe — 1/14/25, 8:57 AM
+are we not supposed to use ai for learning
+Asher — 1/14/25, 9:00 AM
+wdym, i think we are
+Asher — 1/14/25, 9:01 AM
+Did you end up using it? How'd it go? Any recs on what to improve to make it easier to get started?
+MagicWizardPepe — 1/14/25, 10:57 PM
+quick question
+i was integrating open ai with pinecoin
+my index by default accordign to lesson plan was 3072 dimension
+however, during my integration with openai, it forced me to use 1536
+Thomas Davidson — 1/14/25, 10:57 PM
+I just made a new index with the 1536 dimensions
+MagicWizardPepe — 1/14/25, 10:57 PM
+for the prupose of time, i smashed it
+and said yea
+but anyone have any personal opinion on 3072 vs 1536
+Thomas Davidson — 1/14/25, 10:58 PM
+Looking, int,o it I think 3k is from an older model
+MagicWizardPepe — 1/14/25, 10:59 PM
+ah ok awesome
+additionally im using ephor and noticing that some llms are complete shit(loookingat you llama)
+is there any that you all hone in on
+based on your personal opinion of whether they respond in a way that makes sense
+or has some particualrly illuminating responsess
+benji — 1/14/25, 11:17 PM
+Pinecoin
+
+Pepe this isn’t crypto anymore
+benji — 1/14/25, 11:18 PM
+Ive got my pinecone set up with a big and a small, not sure what it’s pinging
+benji — 1/14/25, 11:18 PM
+In ephor now I’ll let you know what I think
+benji — 1/14/25, 11:34 PM
+Experts in Ephor just roasting the responses 😭
+MagicWizardPepe — 1/14/25, 11:40 PM
+lmfao
+jesus
+SA — 1/15/25, 1:53 AM
+The app complexity has really ballooned, so I'm gonna attempt to refactor , any tips? I've saved my work to git in case it goes bad
+Israel — 1/15/25, 2:06 AM
+make todo list X
+make sure backend documentation is up to date X
+remove unnessary files from frontend X
+    Comb through the frontend of our app. Identify anything that doesn't actually get used by our app. Remove things we are not using and do not intend to use.
+make sure all files are in the correct directory X
+make sure all files are named correctly X
+remove unused dependencies X
+make sure requirements.txt is up to date (backend) X
+make sure frontend npm configuration is correct and includes all necessary dependencies X
+make high-level analysis of the project X
+make high-level analysis of the frontend X
+
+here was one of my workflows for a cleanup. I don't have the prompts except for the one sadly. I might have even used the bullet points for the prompts.
+
+I've been trying to do something like this every so often. Helps keep things from being spaghetti 
+red12355 — 1/15/25, 2:06 AM
+i'd plan out what the ideal architecture would be and take small steps to get there (start from a known working state, refactor a feature/component as needed, and end in a known working state) and commit often. 
+
+sometimes you need bigger changes so have a rollback plan if you refactor yourself into a wall  (usually just revert to a previous commit). but sometimes your dependencies change as well e.g. if you need to update your table schema so i'd just have a rough idea of how to revert that (maybe create a separate "dev" db for in flight changes and promote it to your main db if your refactor works well. might be overkill depending on your scope tho.
+BD — 1/15/25, 2:20 AM
+Will report back today. Spent most of yesterday on getting the ai stuff to work in a notebook. Integrating into chatgenius today. Been solo parenting for the last 36 hours and have to stop working at 5p.
+BD — 1/15/25, 2:21 AM
+Got about as little sleep as the rest of you but mine was more comforting a 18th old on why his mommy wasn’t home. 😢
+will — 1/12/25, 10:22 PM
+That’s definitely true. Ecs doesn’t have wide support for deploying open source tools. It’s possible but much easier to just use the aws alternative.
+uzi — 1/12/25, 10:25 PM
+Yeah true, but some aws costs are outrageous.
+Especially for Kafka
+And some open source tools they don't have like api6
+will — 1/12/25, 10:26 PM
+Maybe they don’t have api6 directly, but it doesn’t seem like there are any features api6 has that aws doesn’t in one service or another
+uzi — 1/12/25, 10:28 PM
+Yeah they do but I had a hard requirement for avoiding aws lockin
+will — 1/12/25, 10:28 PM
+In that case, I think k8s is basically your only sane option 
+uzi — 1/12/25, 10:30 PM
+We have different economics in my part of the world where it's cheaper to run your own data center and it's always an option or a thing to do when you have to cut costs
+Or when you don't have spiky traffic and a stable demand 
+Cloud is good for initial iterations and getting to pmf
+But once you start getting big it easily starts costing way more than necessary
+will — 1/12/25, 10:33 PM
+I think cloud is useful beyond pmf. Once you’re a mature business that is growing slowly and predictably though, going to your own infra is probably worth the investment. 
+thisistheaj — 1/12/25, 10:35 PM
+I’m kind of saying that
+uzi — 1/12/25, 10:37 PM
+abstractions are good but not at the cost of completely removing flexibility
+i think this a preferance.  Would you use nestjs or nodejs etc.
+i mean supabase is an abstraction but if you want you can go in its code and change whatever you want. thats pretty damn good
+will — 1/12/25, 10:49 PM
+I’m still trying to think this through. I might just have to spend some time today building a version without a front end framework
+uzi — 1/12/25, 10:50 PM
+Also I think with llms working with text, it's going to produce better results with gitops form of deployment. Especially since you can also review the work or run the output in other models to catch mistakes.
+And then imagine telling an AI to do cost analysis of the gitops infra and choose the best clouds to deploy according to price to make unit economics good 
+∅ — 1/12/25, 10:58 PM
+the tone of like "lol you all deployed sloppily" when you literally cannot deploy containers on the account is pretty annoying lol
+will — 1/12/25, 10:59 PM
+Did they say something like that in the slack?
+∅ — 1/12/25, 11:00 PM
+"No shortcuts - we’ll all be building and deploying like professional engineers from here on out."
+think the gauntlet spikypov is gonna have a reality check
+hugepuppy — 1/13/25, 1:25 AM
+calling our projects 'ai slop' but getting feedback like 'app looks great, good job' is not sitting well with me
+Roger Hunt - Ideatrek/HooveDAO — 1/13/25, 1:25 AM
+Great for our first try
+
+Skip generally
+Two things can be true
+∅ — 1/13/25, 1:40 AM
+It's also very "consequences of your actions" lol
+benji — 1/13/25, 1:40 AM
+It’s week one I think being able to generate AI slop is a good first step
+∅ — 1/13/25, 1:41 AM
+rushing to meet a given scope results in corners being cut
+something something right good cheap
+thisistheaj — 1/13/25, 1:42 AM
+He’s also quoting Paul on that specific term no?
+hugepuppy — 1/13/25, 1:43 AM
+was wondering who gave that feedback. was that an x post?
+thisistheaj — 1/13/25, 1:43 AM
+Claude is great at vanilla js. There are certain kinds of applications that vanilla does not scale well to, but most microsaas are not among them (think Facebook, TikTok etc)
+Thread
+Claude is great at vanilla js. There are
+22 Messages ›
+thisistheaj
+4d ago
+thisistheaj — 1/13/25, 1:43 AM
+It was in here in dropping out
+One of the more seasoned devs said they were gonna quit because they didn’t want to just learn how to make low fidelity ai apps
+Dai — 1/13/25, 1:44 AM
+how did he know 🧐
+thisistheaj — 1/13/25, 1:44 AM
+That is in some sense the eternal struggle of building real products though. Business have deadlines
+Technical debt is bad in the way debt is bad
+You don’t want to much — but sometimes you do need a bridge loan for things
+Palmer — 1/13/25, 1:45 AM
+I don't think the ⁠dropping-out channel is students-only 🙂 (Alec appears to be in it) 
+∅ — 1/13/25, 1:45 AM
+It has managed expectations, as well.
+thisistheaj — 1/13/25, 1:45 AM
+Yeah 100
+will started a thread: Claude is great at vanilla js. There are. See all threads. — 1/13/25, 2:32 AM
+thisistheaj — 1/13/25, 4:06 AM
+@runlaszlorun so are you running your chat app project off of your own compute?
+benji — 1/13/25, 4:33 AM
+Lol pretty sure no channels are restricted except the student channel.
+uzi — 1/13/25, 5:17 AM
+Yes the aws team would run circles around many on prem teams but then how many problems need aws team level skills. Running 10-100 servers is not that hard. And this would take care of 90% of businesses 
+John Holmes — 1/12/25, 4:14 AM
+https://www.threads.net/@luokai/post/DEpAFKPhZ6I
+Threads
+luokai (@luokai) on Threads
+Runner H is an AI agent tool that is currently in private beta stage, capable of setting up a complete process from competitor analysis to building target websites. The concept being promoted is good, but it’s uncertain how well it can be executed in practice. 🧵1/2
+luokai (@luokai) on Threads
+Harmony — 1/12/25, 4:16 AM
+I never really give context. Usually I just include my todo.md then let the Claude find whatever else it needs with Composer+Agent mode
+John Holmes — 1/12/25, 7:19 AM
+https://cursorrules.agnt.one/chat
+
+Generate some .cursorrules based on a description you give
+Cursor Rule Maker
+Create custom cursor instructions from your tech stack
+Cursor Rule Maker
+Asher — 1/12/25, 11:08 AM
+Gave me json
+John Holmes — 1/12/25, 11:18 AM
+I’ve only gotten markdown. What was your prompt?
+Asher — 1/12/25, 11:19 AM
+Image
+John Holmes — 1/12/25, 11:19 AM
+And I think JSON is also a perfectly appropriate style if you’re really specific
+That prompt also didn’t really say much about the project you’re working on.
+Asher — 1/12/25, 11:20 AM
+Lol, was just testing it out
+John Holmes — 1/12/25, 1:46 PM
+I'd be remiss if I didn't share this with the community.
+
+https://marketplace.visualstudio.com/items?itemName=SpecStory.specstory-vscode
+
+Ever get a message about your cursor conversation being too long? Now you can export your conversation as a markdown file and then point the new conversation to the md file. Saving you hella time in getting the bastard trained up again.
+SpecStory (Cursor Extension) - Visual Studio Marketplace
+Extension for Visual Studio Code - (Cursor Extension) Capture, search and learn from every AI coding journey
+Image
+Dai — 1/12/25, 9:19 PM
+so which aws things have people been able to use successfully with our permissions? makinf new IAM / permissions wasn’t working last i checked which seems to rule out most interesting use cases but im probably missing something
+
+anyone got fully functioning ecs/fargate, lambda, rds that wants to showcase? 🙌
+turing_hamster — 1/12/25, 9:27 PM
+all you need is an ec2 micro or small instance
+
+i also got s3 to work
+Dai — 1/12/25, 9:35 PM
+ya im on ec2 now but I guess im surprised if that’s the best practice we will use the entire time since they are making a big deal about aws and professional deployment lol
+turing_hamster — 1/12/25, 9:36 PM
+ec2 is a great service. it doesn't have to be "serverless" to be a professsional deployment
+Dai — 1/12/25, 9:37 PM
+agreed im just trying to guess what’s the content for thursday haha
+i will admit im a bit sad about fargate though it would made deployment so much cleaner without managing custom scripts
+uzi — 1/12/25, 9:41 PM
+Dude eks is professional deployment. If you are not doing eks then might as well use ec2
+You don't need crazy scripts for ec2. Just learn docker compose
+Dai — 1/12/25, 9:43 PM
+hm must be an aesthetic thing
+uzi — 1/12/25, 9:45 PM
+It's just more useful to learn things that are available on other clouds as well as onpeem because they are more fundamental and will more useful in building initial concepts
+I think that with the advent of AI doing the abstraction,  services that abstract underlying infra for deployment like fargate and amplify will go away 
+Dai — 1/12/25, 9:47 PM
+oh interesting
+so just kinda have all the literal configurations splat out there and let AI handle multi point changes etc?
+uzi — 1/12/25, 9:50 PM
+I mean these services are also spinning up vms/EC2 and doing things. Instead of using ai to talk to these services, Ai can directly talk to the underlying vms/EC2
+will — 1/12/25, 9:52 PM
+I disagree with this. Abstractions help ai too. We aren’t saying “lets get rid of react and let ai handle the dom directly”
+uzi — 1/12/25, 9:52 PM
+Fair point.
+Infra has terraform though for manipulating
+Or maybe it's gonna be more of a AI that launches software talking to an AI that only deals with provioning infrA
+will — 1/12/25, 9:59 PM
+Yes, but terraform alone isn’t enough. You need things like backup, fail over, restarting, patching etc. All of that requires either using some cloud abstraction, or writing more very fiddly/hard to test code  to handle it that I would expect current ai to struggle with. I don’t know what the future will hold, but for now infra abstractions are still really important 
+uzi — 1/12/25, 10:01 PM
+Maybe it's just me but I have had negative experiences with amplify and ecs. Eks with the right tooling solved all these things for me. It was harder trying to wrangle ecs and amplify.
+Dai — 1/12/25, 10:03 PM
+what’s your experience with ecs? isn’t it just docker compose basically?
+will — 1/12/25, 10:03 PM
+I’ve not used amplify, but haven’t heard great things about it. Ecs and fargate though I really like. It’s Amazons internally recommended stack for most cases, and it’s definitely my preferred stack for most things too
+uzi — 1/12/25, 10:04 PM
+Ecs is srota like docker compose but aws basically has a very convoluted way of setting networking for it, unless you completely buy into the aws ecosystem and do everything their way. That was my experience 
+Maybe it's gotten better since I tried it. But it was easier to map my on prem.knowledge to eks. I basically came from on prem.to cloud
+will — 1/12/25, 10:06 PM
+I don’t know if people really use docker compose for deployment. Ecs is a container management service. You tell it I want this many containers running this image with this cpu/ram each, and it automatically handles starting, restarting the containers. It’ll also handle auto scaling
+uzi — 1/12/25, 10:11 PM
+Yeah but it also locks those settings in its own opinianted way of doing things. You can't make tweaks if you disagree with it on something
+will — 1/12/25, 10:13 PM
+I’m sure that’s true. I don’t think it’s trying to be k8s where everything and anything is possible at the cost of pretty extreme complexity. Do you have something specific you disagree with it about?
+uzi — 1/12/25, 10:14 PM
+Yeah k8s had some pretty good defaults you can just apply through helper software and only tweak something if it's required and only learn about that part
+I was trying to launch API 6 on ecs. It require two containers that talk to each other before serving the outside world. Ecs UI was too locked for me to make it work
+Basically trying to launch micro services on ecs was not fun
+But also just help guides around ecs were pretty lacking also
+Then I just used a UI abstraction for k8s with great defaukts, got the thing working in a few days coming from 0 k8s experience and if something special was needed I just drilled down in the config files and only learned about them when needed.
+Basically I guess my point boils down to this. If you want to deploy a tool. It comes with either a docker compose or a helm chart or both. Trying to convert that to ecs sucked for me.
+PartyPooper — 1/11/25, 3:03 AM
+ah dang okay, gotta somehow ping it
+thx for catching that again
+thisistheaj — 1/11/25, 3:04 AM
+email auth link is redirecting me to local host
+Was able to get in though through login anyways
+UI looking nice — cool that you did workspaces
+PartyPooper — 1/11/25, 3:05 AM
+ooo lemme fix that up too, gotta update the node env something i guess
+thisistheaj — 1/11/25, 3:06 AM
+Also ui looks mobile responsive except the actual chat page lol
+PartyPooper — 1/11/25, 3:06 AM
+i did not even consider mobile yet 🤣
+thisistheaj — 1/11/25, 3:08 AM
+Yeah I figured — which is why it’s nice that the rest of it is ok on mobile already
+PartyPooper — 1/11/25, 3:08 AM
+thx cursor
+John Holmes — 1/11/25, 3:08 AM
+Good guy cursor
+thisistheaj — 1/11/25, 3:20 AM
+yeah: the 'n replies' link only counts replies from the same user who posted — other users don't count
+pretty solid in general tho
+nice work
+PartyPooper — 1/11/25, 3:22 AM
+damn i ddnt realize that n replies
+thanks man
+thisistheaj — 1/11/25, 3:23 AM
+one thing (and this applies to my app too lmao): I think it might be pretty important to get unread indicators done before next week — kind of hard to use a chat app fr without it. 
+im in the same boat tho
+PartyPooper — 1/11/25, 3:23 AM
+unread indicators is a lot of work tho
+thisistheaj — 1/11/25, 3:23 AM
+yeah 🤦‍♀️
+PartyPooper — 1/11/25, 3:23 AM
+gotta remove it if the user replies, if the scroll is not at the bottom of the chat gotta show a scroll to bottom or something, etc
+thisistheaj — 1/11/25, 3:24 AM
+I had it mostly working late ln but then botched it while i was debugging and had to scrap
+PartyPooper — 1/11/25, 3:24 AM
+you using supabase?
+thisistheaj — 1/11/25, 3:25 AM
+yeah scroll to bottom is insane — and requires good pagination
+i think there might be a minimal implementation that is tractable though. just so that theres somehting in the sidebar that says 'hey click on me, new content here'
+otherwise you miss stuff
+if i can get it to generate even a non realtime version again i will include it. proabbly main thing im doing over the weekend
+thisistheaj — 1/11/25, 3:26 AM
+nah, sqlite and a backend
+PartyPooper — 1/11/25, 3:27 AM
+and read/unread should kinda be tied to notifications which is also gonna be a pain..
+thisistheaj — 1/11/25, 3:28 AM
+... yep
+i tihink the way to think about it is separate it out into multiple features 
+any bare bones indicator in the sidebar — clears whenever they click into the channel
+autonav them to the 'page' where their last read message is + 'go to bottom' button
+separate notificaitons page with links into elsewhere in the app
+1 is useful even without 2 and 3
+theres also like :
+thread specific unreads
+handling @username specially
+etc etc
+lacking #1 is the only one of these that is completely experience breaking though
+PartyPooper — 1/11/25, 3:34 AM
+all this before week 2 huh... gonna grind the whole weekend i guess
+thisistheaj — 1/11/25, 4:53 AM
+got a simple version up
+Image
+lmao, no not doing all of that before week 2.
+i just wanted a blue dot
+fullstacksapien — 1/11/25, 5:05 AM
+if anyone isn't frantically working on their own app can they take a minute to try and break mine? Don't try anything in the dev tools please, it's sensitive 🙏 
+https://comms-app-749v.vercel.app/
+Thread
+if anyone isn't frantically working on
+18 Messages ›
+fullstacksapien
+6d ago
+Behnam — 1/11/25, 5:39 AM
+Curious, does anyone uses separate composers for separate parts of their process in Cursor? I've been realizing that anytime I get derailed and have to go down a bug rabbit hole, the composer I was working with seems to lose context and become stupid. Thinking of using a dedicated thread just for errors and troubleshooting, wondering if anyone has had luck with that approach.
+Harmony — 1/11/25, 5:40 AM
+i just make a new composer every once in a while. Usually between features
+hbauer — 1/11/25, 5:42 AM
+i got burned a couple times and lost work jumping between composer windows and forgetting to submit things in between git commits
+so hasn't seemed worth the risk but feel like it might just be a me thing
+wish there were a way to take selected files context with you from one composer window to another though cuz i start new windows frequently now to keep context small 
+TomH — 1/11/25, 5:44 AM
+ask it to write a concise summary of the current context and copy paste sometimes works
+gsu — 1/11/25, 9:06 AM
+https://x.com/mervenoyann/status/1877701256937963749?s=46
+merve (@mervenoyann) on X
+Alibaba released Multimodal Textbook: a new multimodal pre-training set from online instructional videos (22k hours) 🧑🏻‍🏫📕
+
+6,5M images interleaved witk 800k text on math, physics, chemistry 👏
+merve (@mervenoyann) on X
+
+Twitter•1/10/25, 8:57 PM
+tinmanbrobots — 1/11/25, 11:13 PM
+Has anyone used the Cursor Bug Finder tool yet? I keep looking at it but haven't actually tried it yet.
+Ryan Heron — 1/11/25, 11:44 PM
+it sux
+John Holmes — 1/12/25, 1:51 AM
+I tried it. Fed an issue into composer and it did its best to fix it.
+
+It still didn’t fix it but I could see it working ok for high confidence bugs.
+fullstacksapien — 1/12/25, 2:37 AM
+I haven't tried it yet, but it would have to be really fucking awesome for that pricing
+Image
+thisistheaj — 1/12/25, 3:54 AM
+The one I did with the free model was shit. But willing to experiment more
+It identified 2-3 “issues” 2 of which were areas where I was intentionally not following best practices for reasons related to the applications design and one which the syntax parser also caught
+Nils — 1/12/25, 3:56 AM
+Have any of the rich MFs in here tried using o1 pro? There are apparently some tools that you can use to concat your whole project repo into one big file and copy paste it into o1 pro (huge context window) and have it think on it for a couple minutes to spot inconsistencies or come up with a detailed plan how to implement a new feature. The output you could then paste into cursor composer. I tried doing something like this with o1 in cursor chat but it seems a bit too lazy and context unaware. Somehow all OpenAI models suck in cursor and I would love to use them more again, since I do think they are great for more complex reasoning tasks.
+thisistheaj — 1/12/25, 3:56 AM
+Like for one of them it was worried that my textareas height was fixed which might cause text to be obscured when users are writing — and I’m like “ser, this is a chatapp. Not substack”
+Max McCorkel — 1/12/25, 4:00 AM
+I saw a YouTube video of someone doing that trick, but fed the entire code base into Claude opus
+Jefferson — 1/12/25, 4:02 AM
+One of my buddies says it works pretty good.

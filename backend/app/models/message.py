@@ -46,40 +46,46 @@ async def create_message(
         data = message_data.dict() if hasattr(message_data, 'dict') else message_data
         
         # Determine if this is a direct message
-        is_direct = data.get('metadata', {}).get('mode') == 'direct'
+        is_direct = True  # Always use direct messages for avatar chat
         
         # Convert UUIDs in metadata to strings
         metadata = data.get('metadata', {})
-        if metadata and 'target_user_id' in metadata:
-            metadata['target_user_id'] = str(metadata['target_user_id'])
+        if metadata:
+            metadata = {
+                k: str(v) if isinstance(v, UUID) else v 
+                for k, v in metadata.items()
+            }
         
         # Prepare message data
         message_insert = {
-            "id": str(uuid4()),
             "channel_id": str(data["channel_id"]) if data.get("channel_id") else None,
             "user_id": str(user_id),
             "profile_id": str(profile_id),
             "content": data["content"],
             "message_type": data.get("message_type", "text"),
-            "parent_id": str(data["parent_id"]) if data.get("parent_id") else None,
-            "attachments": data.get("attachments"),
-            "metadata": metadata,
-            "created_at": datetime.utcnow().isoformat(),
-            "updated_at": datetime.utcnow().isoformat()
+            "metadata": metadata
         }
         
-        # Use direct_messages table for DMs, messages table for regular messages
-        table = "direct_messages" if is_direct else "messages"
-        print(f"Creating message in {table} table")
+        # Use direct_messages table for DMs
+        print(f"Creating message in direct_messages table")
+        print(f"Message data: {message_insert}")
         
-        # Insert the message using synchronous query
-        response = supabase_client.table(table)\
-            .insert(message_insert)\
-            .execute()
+        # Insert the message using RPC function for direct messages
+        response = supabase_client.rpc(
+            'send_direct_message',
+            {
+                'p_channel_id': message_insert['channel_id'],
+                'p_user_id': message_insert['user_id'],
+                'p_profile_id': message_insert['profile_id'],
+                'p_content': message_insert['content'],
+                'p_message_type': message_insert['message_type'],
+                'p_metadata': message_insert['metadata']
+            }
+        ).execute()
         
         if response and hasattr(response, 'data') and response.data:
-            created_message = response.data[0]
-            print(f"Message created successfully in {table}")
+            created_message = response.data
+            print(f"Message created successfully")
             
             # Convert the response data to a Message object
             return Message(
@@ -88,21 +94,15 @@ async def create_message(
                 profile_id=UUID(created_message['profile_id']),
                 content=created_message['content'],
                 message_type=MessageType(created_message.get('message_type', 'text')),
-                parent_id=UUID(created_message['parent_id']) if created_message.get('parent_id') else None,
-                channel_id=UUID(created_message['channel_id']) if created_message.get('channel_id') else None,
-                attachments=created_message.get('attachments'),
+                channel_id=UUID(created_message['channel_id']),
                 metadata=created_message.get('metadata'),
                 inserted_at=datetime.fromisoformat(created_message['created_at'].replace('Z', '+00:00')),
-                updated_at=datetime.fromisoformat(created_message['updated_at'].replace('Z', '+00:00')) if created_message.get('updated_at') else None,
-                deleted_at=datetime.fromisoformat(created_message['deleted_at'].replace('Z', '+00:00')) if created_message.get('deleted_at') else None
+                updated_at=datetime.fromisoformat(created_message['updated_at'].replace('Z', '+00:00')) if created_message.get('updated_at') else None
             )
         else:
             print(f"Error creating message: No data in response")
             return None
             
-    except APIError as e:
-        print(f"API Error creating message: {e.args[0] if e.args else str(e)}")
-        return None
     except Exception as e:
         print(f"Error creating message: {e}")
         return None
