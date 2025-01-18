@@ -7,10 +7,7 @@ python-multipart>=0.0.5
 email-validator>=2.0.0
 
 # Authentication and Security
-python-jose[cryptography]>=3.3.0
-passlib[bcrypt]>=1.7.4
 PyJWT>=2.0.0
-bcrypt>=4.0.1
 
 # Testing
 pytest>=7.0.0
@@ -24,18 +21,10 @@ gotrue>=0.5.4
 postgrest>=0.10.6
 storage3>=0.3.5
 
-# Database
-sqlalchemy>=2.0.0
-asyncpg>=0.27.0
-databases[postgresql]>=0.7.0
-alembic>=1.12.0
-
 # Environment and utils
 python-dotenv>=0.19.0
 filetype>=1.2.0,<2.0.0
 aiofiles>=23.0.0
-python-magic>=0.4.27
-pandas>=2.0.0
 uuid>=1.30
 
 # AI/ML

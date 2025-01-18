@@ -41,7 +41,7 @@ if JWT_SECRET:
 else:
     logger.error("Failed to load JWT secret")
 
-async def get_current_user(
+def get_current_user(
     credentials: Annotated[HTTPAuthorizationCredentials, Depends(security)],
     db: Annotated[Client, Depends(get_db)]
 ) -> User:
@@ -77,9 +77,19 @@ async def get_current_user(
                 token, 
                 JWT_SECRET, 
                 algorithms=["HS256"],
-                audience="authenticated"
+                audience="authenticated",
+                issuer="supabase",
+                options={
+                    "verify_signature": True,
+                    "verify_exp": True,
+                    "verify_aud": True,
+                    "verify_iss": True,
+                    "verify_sub": True,
+                    "require": ["exp", "aud", "iss", "sub"]
+                }
             )
             logger.info(f"Successfully decoded token for user: {decoded.get('sub', 'unknown')}")
+            logger.debug(f"Decoded token data: {json.dumps(decoded, indent=2)}")
         except jwt.ExpiredSignatureError:
             logger.warning("Token has expired")
             raise HTTPException(
@@ -107,8 +117,8 @@ async def get_current_user(
         logger.info(f"Checking profiles for user_id: {user_id}")
         
         try:
-            # Get user data from profiles table
-            response = db.from_("profiles").select("*").eq("id", user_id).execute()
+            # Get user data from profiles table - execute synchronously
+            response = db.from_("profiles").select("*").eq("id", user_id).single().execute()
             logger.debug(f"Profile query response: {response}")
             
             if not response.data:
@@ -121,12 +131,13 @@ async def get_current_user(
                     "username": username,
                     "full_name": decoded.get("user_metadata", {}).get("full_name", ""),
                     "status": UserStatus.ONLINE.value,  # Use the enum value
-                    "created_at": datetime.now(timezone.utc),
-                    "updated_at": datetime.now(timezone.utc)
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                    "updated_at": datetime.now(timezone.utc).isoformat()
                 }
                 
                 logger.info(f"Creating new profile for user {user_id}")
                 try:
+                    # Execute synchronously
                     insert_response = db.from_("profiles").insert(profile_data).execute()
                     logger.debug(f"Profile creation response: {insert_response}")
                     
@@ -151,12 +162,21 @@ async def get_current_user(
             if isinstance(user_data["status"], str):
                 user_data["status"] = UserStatus(user_data["status"])
                 
+            # Convert datetime strings to datetime objects
+            if isinstance(user_data["created_at"], str):
+                user_data["created_at"] = datetime.fromisoformat(user_data["created_at"].replace("Z", "+00:00"))
+            if isinstance(user_data["updated_at"], str):
+                user_data["updated_at"] = datetime.fromisoformat(user_data["updated_at"].replace("Z", "+00:00"))
+            if user_data.get("last_seen") and isinstance(user_data["last_seen"], str):
+                user_data["last_seen"] = datetime.fromisoformat(user_data["last_seen"].replace("Z", "+00:00"))
+                
             return User(**user_data)
             
         except HTTPException:
             raise
         except Exception as e:
             logger.error(f"Error querying profile: {str(e)}")
+            logger.exception(e)
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Database error: {str(e)}",
@@ -166,6 +186,7 @@ async def get_current_user(
         raise
     except Exception as e:
         logger.error(f"Unexpected error in get_current_user: {str(e)}")
+        logger.exception(e)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=f"Could not validate credentials: {str(e)}",

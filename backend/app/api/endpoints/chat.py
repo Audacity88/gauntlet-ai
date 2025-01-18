@@ -4,15 +4,15 @@ import logging
 from pydantic import BaseModel, Field
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
-from sqlalchemy.ext.asyncio import AsyncSession
 from supabase import Client
-from app.core.database import get_db, get_session
+from app.core.database import get_db
 from app.api.deps import get_current_user
 from app.models.user import User, get_user_by_id
 from app.rag.llm import LLMProcessor
 from app.models.user_history import UserHistoryManager
 from app.core.config import settings
 import os
+import json
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -62,7 +62,7 @@ class HistoryRequest(BaseModel):
 
 @router.post("/user_summary")
 @router.options("/user_summary")
-async def get_user_summary(
+def get_user_summary(
     request: UserSummaryRequest,
     current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[Client, Depends(get_db)]
@@ -71,7 +71,7 @@ async def get_user_summary(
     logger.info(f"Processing user summary request for target_user_id: {request.target_user_id}")
     try:
         # Get user profile
-        target_user = await get_user_by_id(db, request.target_user_uuid)
+        target_user = get_user_by_id(db, request.target_user_uuid)
         if not target_user:
             logger.warning(f"User not found: {request.target_user_id}")
             raise HTTPException(
@@ -81,7 +81,7 @@ async def get_user_summary(
             
         # Get user's recent messages
         history_manager = UserHistoryManager(db)
-        messages = await history_manager.get_user_messages(
+        messages = history_manager.get_user_messages(
             user_id=request.target_user_uuid,
             limit=10,  # Get last 10 messages
             is_dm=False
@@ -123,27 +123,40 @@ async def get_user_summary(
 async def send_message(
     message: MessageRequest,
     current_user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session)
+    db: Client = Depends(get_db)
 ) -> Dict[str, Any]:
     """Send a message and get a response imitating the target user."""
     try:
+        logger.info(f"Processing message request for target_user_id: {message.target_user_id}")
+        logger.debug(f"Message content: {message.content}")
+        
         # Initialize components
         llm = LLMProcessor(
             api_key=settings.OPENAI_API_KEY,
             model_name="gpt-3.5-turbo-instruct",
             temperature=0.85
         )
-        history_manager = UserHistoryManager(session)
+        history_manager = UserHistoryManager(db)
         
         # Get user's message history for context
-        context_data = await history_manager.get_user_context(
-            user_id=message.target_user_uuid,
-            message_id=message.message_uuid,
-            is_dm=message.is_dm,
-            limit=20  # Get more messages for better style understanding
-        )
+        try:
+            context_data = history_manager.get_user_context(
+                user_id=message.target_user_uuid,
+                message_id=message.message_uuid,
+                is_dm=message.is_dm,
+                limit=20  # Get more messages for better style understanding
+            )
+            logger.debug(f"Retrieved context data: {json.dumps(context_data, indent=2)}")
+        except Exception as e:
+            logger.error(f"Error getting user context: {str(e)}")
+            logger.exception(e)
+            raise HTTPException(
+                status_code=500,
+                detail=f"Error getting user context: {str(e)}"
+            )
         
         if not context_data["chunks"]:
+            logger.warning(f"No message history found for user {message.target_user_id}")
             raise HTTPException(
                 status_code=404,
                 detail=f"No message history found for user {message.target_user_id}"
@@ -154,25 +167,38 @@ async def send_message(
         username = context_data["chunks"][0]["metadata"]["username"]
         
         # Generate response
-        response = await llm.generate_rag_response(
-            query=message.content,
-            context=context,
-            username=username
-        )
-        
-        return response
+        try:
+            response = await llm.generate_rag_response(
+                query=message.content,
+                context=context,
+                username=username
+            )
+            logger.info("Successfully generated response")
+            logger.debug(f"Response data: {json.dumps(response, indent=2)}")
+            return response
+        except Exception as e:
+            logger.error(f"Error generating response: {str(e)}")
+            logger.exception(e)
+            raise HTTPException(
+                status_code=500,
+                detail=f"Error generating response: {str(e)}"
+            )
+            
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error processing message: {str(e)}")
+        logger.exception(e)
         raise HTTPException(
             status_code=500,
             detail=f"Error processing message: {str(e)}"
         )
 
 @router.post("/stream")
-async def stream_message(
+def stream_message(
     message: MessageRequest,
     current_user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session)
+    db: Client = Depends(get_db)
 ) -> StreamingResponse:
     """Stream a message response imitating the target user."""
     try:
@@ -182,10 +208,10 @@ async def stream_message(
             model_name="gpt-3.5-turbo-instruct",
             temperature=0.85
         )
-        history_manager = UserHistoryManager(session)
+        history_manager = UserHistoryManager(db)
         
         # Get user's message history for context
-        context_data = await history_manager.get_user_context(
+        context_data = history_manager.get_user_context(
             user_id=message.target_user_uuid,
             message_id=message.message_uuid,
             is_dm=message.is_dm,
@@ -224,12 +250,12 @@ async def stream_message(
 async def get_user_history(
     request: HistoryRequest,
     current_user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session)
+    db: Client = Depends(get_db)
 ) -> Dict[str, Any]:
     """Get message history for a specific user."""
     try:
         logger.info(f"Fetching history for user {request.target_user_id}")
-        history_manager = UserHistoryManager(session)
+        history_manager = UserHistoryManager(db)
         
         try:
             messages = await history_manager.get_user_messages(
@@ -246,25 +272,13 @@ async def get_user_history(
         
         # Transform messages into the format expected by the frontend
         formatted_messages = []
-        try:
-            for msg in messages:
-                formatted_messages.append({
-                    "content": msg["content"],
-                    "sender": {
-                        "id": str(request.target_user_uuid),
-                        "username": msg["metadata"]["username"]
-                    },
-                    "created_at": msg["metadata"]["timestamp"],
-                    "id": msg["metadata"]["message_id"]
-                })
-        except Exception as e:
-            logger.error(f"Error formatting messages: {str(e)}")
-            logger.error(f"Message that caused error: {msg}")
-            logger.exception(e)
-            raise HTTPException(
-                status_code=500,
-                detail=f"Error formatting messages: {str(e)}"
-            )
+        for msg in messages:
+            formatted_messages.append({
+                "content": msg["content"],
+                "timestamp": msg["metadata"]["timestamp"],
+                "id": msg["metadata"]["message_id"],
+                "username": msg["metadata"]["username"]
+            })
         
         return {
             "messages": formatted_messages,
@@ -272,9 +286,8 @@ async def get_user_history(
         }
         
     except Exception as e:
-        logger.error(f"Error fetching user history: {str(e)}")
-        logger.exception(e)
+        logger.error(f"Error getting user history: {str(e)}")
         raise HTTPException(
             status_code=500,
-            detail=f"Error fetching user history: {str(e)}"
+            detail=f"Error getting user history: {str(e)}"
         ) 

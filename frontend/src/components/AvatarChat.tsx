@@ -259,31 +259,18 @@ export function AvatarChat({ className = '' }: AvatarChatProps) {
     }
 
     try {
-      // Get current session for avatar API request
+      // Get current session for API request
       const { data: { session }, error: sessionError } = await supabase.auth.getSession()
-      if (sessionError) {
-        console.error('Error getting session:', sessionError)
-        throw new Error('No active session')
-      }
-
-      if (!session?.access_token) {
+      if (sessionError || !session?.access_token) {
         throw new Error('No active session or missing access token')
       }
 
       // Debug token format
-      console.log('Send message token debug:', {
+      console.log('Token debug:', {
         tokenLength: session.access_token.length,
         tokenParts: session.access_token.split('.').length,
         tokenStart: session.access_token.substring(0, 20) + '...',
       });
-
-      // Log token details for debugging
-      console.log('Making avatar API request:', {
-        tokenLength: session.access_token.length,
-        tokenPrefix: session.access_token.substring(0, 10) + '...',
-        username: targetUser.username,
-        historyLength: messageHistory.length
-      })
 
       const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
       // Make API request to get avatar's response - this will also create the user's message
@@ -291,8 +278,10 @@ export function AvatarChat({ className = '' }: AvatarChatProps) {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`
+          'Authorization': `Bearer ${session.access_token}`,
+          'Accept': 'application/json'
         },
+        credentials: 'include',  // Include cookies if any
         body: JSON.stringify({
           content,
           target_user_id: targetUser.id,

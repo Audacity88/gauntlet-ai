@@ -2,12 +2,10 @@ from typing import Annotated, AsyncGenerator
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 import jwt  # Using python-jwt instead of python-jose
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, Table
 from datetime import datetime, timedelta
 from app.core.config import settings
-from app.core.database import get_session
-from app.models.user import UserDB, User
+from app.models.user import User
+from app.core.supabase import get_supabase_client
 import logging
 import base64
 
@@ -21,8 +19,10 @@ def get_jwt_secret():
         return None
         
     try:
+        # Add padding if needed
+        padded_secret = secret + "=" * (-len(secret) % 4)
         # Try to decode as base64
-        decoded = base64.b64decode(secret)
+        decoded = base64.b64decode(padded_secret)
         logger.info("Successfully decoded base64 JWT secret")
         return decoded
     except Exception as e:
@@ -38,9 +38,8 @@ ACCESS_TOKEN_EXPIRE_MINUTES = settings.ACCESS_TOKEN_EXPIRE_MINUTES
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
-async def get_current_user(
-    token: Annotated[str, Depends(oauth2_scheme)],
-    session: AsyncSession = Depends(get_session)
+def get_current_user(
+    token: Annotated[str, Depends(oauth2_scheme)]
 ) -> User:
     """Get the current user from the token."""
     credentials_exception = HTTPException(
@@ -60,11 +59,16 @@ async def get_current_user(
             token, 
             JWT_SECRET, 
             algorithms=[ALGORITHM],
-            verify=True,
             options={
-                "verify_aud": False,  # Disable audience verification
-                "verify_signature": True  # Ensure signature verification is enabled
-            }
+                "verify_signature": True,
+                "verify_exp": True,
+                "verify_aud": True,
+                "verify_iss": True,
+                "verify_sub": True,
+                "require": ["exp", "aud", "iss", "sub", "iat"]
+            },
+            audience="authenticated",
+            issuer="supabase"
         )
         
         logger.debug(f"JWT payload: {payload}")
@@ -91,26 +95,35 @@ async def get_current_user(
         raise credentials_exception
     
     try:
-        # Get user from database using Supabase user ID
-        stmt = select(UserDB).where(UserDB.id == sub)
-        result = await session.execute(stmt)
-        db_user = result.scalar_one_or_none()
+        # Get user from Supabase profiles table
+        supabase = get_supabase_client()
+        response = supabase.from_("profiles").select("*").eq("id", str(sub)).single().execute()
         
-        if db_user is None:
+        if not response.data:
             # Create user if they don't exist
             username = email.split('@')[0] if email else f"user_{sub[:8]}"
-            db_user = UserDB(
-                id=sub,
-                email=email,
-                username=username,
-                is_active=True
-            )
-            session.add(db_user)
-            await session.commit()
-            logger.info(f"Created new user with ID {sub}")
-        
-        # Convert SQLAlchemy model to Pydantic model
-        return User.model_validate(db_user)
+            new_user_data = {
+                "id": sub,
+                "email": email,
+                "username": username,
+                "status": "ONLINE",
+                "created_at": datetime.utcnow().isoformat(),
+                "updated_at": datetime.utcnow().isoformat()
+            }
+            response = supabase.from_("profiles").insert(new_user_data).execute()
+            if not response.data:
+                logger.error("Failed to create user profile")
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to create user profile"
+                )
+            user_data = response.data[0]
+            logger.info(f"Created new user profile with ID {sub}")
+        else:
+            user_data = response.data
+            
+        # Convert to Pydantic model
+        return User(**user_data)
         
     except Exception as e:
         logger.error(f"Database error: {str(e)}")
