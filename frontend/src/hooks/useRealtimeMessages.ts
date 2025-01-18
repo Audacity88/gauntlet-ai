@@ -339,106 +339,116 @@ export function useRealtimeMessages({
     const table = chatType === 'dm' ? 'direct_messages' : 'messages';
     const subscriptionId = `realtime:${table}:${channelId}`;
     let isCurrentSubscription = true;
+    let reconnectAttempts = 0;
+    const MAX_RECONNECT_ATTEMPTS = 5;
+    const RECONNECT_INTERVAL = 2000; // 2 seconds
 
-    // Clean up any existing subscription
-    if (subscriptionRef.current) {
-      console.log('Cleaning up existing subscription:', subscriptionId);
-      subscriptionRef.current.unsubscribe();
-      supabase.removeChannel(subscriptionRef.current);
-      subscriptionRef.current = null;
-    }
+    // Clean up any existing subscription before creating a new one
+    const cleanup = () => {
+      if (subscriptionRef.current) {
+        console.log('Cleaning up existing subscription:', subscriptionRef.current.topic);
+        subscriptionRef.current.unsubscribe();
+        supabase.removeChannel(subscriptionRef.current);
+        subscriptionRef.current = null;
+      }
+    };
 
-    console.log('Setting up realtime subscription:', {
-      table,
-      channelId,
-      subscriptionId,
-      chatType
-    });
+    const setupSubscription = () => {
+      cleanup();
 
-    const channel = supabase
-      .channel(subscriptionId)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table,
-          filter: `channel_id=eq.${channelId}`
-        },
-        async (payload: RealtimePostgresChangesPayload<any>) => {
-          if (!isCurrentSubscription) {
-            console.log('Ignoring event for old subscription');
-            return;
+      console.log('Setting up new realtime subscription:', {
+        table,
+        channelId,
+        subscriptionId,
+        chatType,
+        timestamp: new Date().toISOString(),
+        attempt: reconnectAttempts + 1
+      });
+
+      const channel = supabase
+        .channel(subscriptionId, {
+          config: {
+            broadcast: { ack: true },
+            presence: { key: user.id },
+            retryAfter: 2000,
+            timeout: 30000
           }
-
-          try {
-            const { eventType } = payload;
-            console.log('Received realtime event:', { 
-              eventType, 
-              payload,
-              channelId,
-              messageId: payload.new?.id,
-              content: payload.new?.content,
-              timestamp: new Date().toISOString()
-            });
-
-            // Handle message deletion
-            if (eventType === 'DELETE') {
-              console.log('Processing DELETE event for message:', payload.old.id);
-              setMessages(prev => prev.filter(msg => msg.id !== payload.old.id));
+        })
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table,
+            filter: `channel_id=eq.${channelId}`
+          },
+          async (payload: RealtimePostgresChangesPayload<any>) => {
+            if (!isCurrentSubscription) {
+              console.log('Ignoring event for old subscription:', subscriptionId);
               return;
             }
 
-            // Skip if message was soft deleted
-            if (eventType === 'UPDATE' && payload.new?.deleted_at) {
-              console.log('Processing soft DELETE for message:', payload.new.id);
-              setMessages(prev => prev.filter(msg => msg.id !== payload.new.id));
-              return;
-            }
-
-            // For INSERT and UPDATE, fetch the full message data
-            const messageId = payload.new.id;
-            console.log('Fetching full message data for:', messageId);
-            
-            const query = chatType === 'dm'
-              ? supabase
-                  .from('direct_messages')
-                  .select(`
-                    *,
-                    profile:profiles!direct_messages_profile_id_fkey(
-                      id,
-                      username,
-                      full_name,
-                      avatar_url
-                    )
-                  `)
-                  .eq('id', messageId)
-                  .is('deleted_at', null)
-                  .single()
-              : supabase
-                  .from('messages')
-                  .select(`
-                    *,
-                    profile:profiles(*)
-                  `)
-                  .eq('id', messageId)
-                  .single();
-
-            const { data: messageWithUser, error } = await query;
-
-            if (error) {
-              console.error('Error fetching message details:', error);
-              return;
-            }
-
-            if (messageWithUser) {
-              console.log('Successfully fetched message details:', {
-                messageId: messageWithUser.id,
-                content: messageWithUser.content,
-                profile: messageWithUser.profile
+            try {
+              const { eventType } = payload;
+              console.log('Received realtime event:', { 
+                eventType, 
+                payload,
+                channelId,
+                messageId: payload.new?.id,
+                content: payload.new?.content,
+                timestamp: new Date().toISOString(),
+                subscriptionId
               });
 
-              // For channel messages, ensure profile is mapped to user
+              // Handle message deletion
+              if (eventType === 'DELETE' || (eventType === 'UPDATE' && payload.new?.deleted_at)) {
+                const idToDelete = eventType === 'DELETE' ? payload.old.id : payload.new.id;
+                console.log('Processing DELETE event for message:', idToDelete);
+                setMessages(prev => prev.filter(msg => msg.id !== idToDelete));
+                return;
+              }
+
+              // For INSERT and UPDATE, fetch the full message data with proper joins
+              const messageId = payload.new.id;
+              console.log('Fetching full message data for:', messageId);
+              
+              const query = chatType === 'dm'
+                ? supabase
+                    .from('direct_messages')
+                    .select(`
+                      *,
+                      profile:profiles!direct_messages_profile_id_fkey(
+                        id,
+                        username,
+                        full_name,
+                        avatar_url
+                      )
+                    `)
+                    .eq('id', messageId)
+                    .is('deleted_at', null)
+                    .single()
+                : supabase
+                    .from('messages')
+                    .select(`
+                      *,
+                      profile:profiles(*)
+                    `)
+                    .eq('id', messageId)
+                    .single();
+
+              const { data: messageWithUser, error } = await query;
+
+              if (error) {
+                console.error('Error fetching message details:', error);
+                return;
+              }
+
+              if (!messageWithUser) {
+                console.error('No message data found for:', messageId);
+                return;
+              }
+
+              // Process message based on chat type
               const processedMessage = chatType === 'dm' 
                 ? messageWithUser 
                 : {
@@ -446,15 +456,10 @@ export function useRealtimeMessages({
                     user: messageWithUser.profile
                   };
 
-              console.log('Processed message for update:', {
-                id: processedMessage.id,
-                content: processedMessage.content,
-                user: processedMessage.user || processedMessage.profile
-              });
-
-              if (eventType === 'INSERT') {
-                setMessages(prev => {
-                  // Avoid duplicate messages
+              // Update messages state based on event type
+              setMessages(prev => {
+                if (eventType === 'INSERT') {
+                  // Check for duplicates
                   if (prev.some(msg => msg.id === processedMessage.id)) {
                     console.log('Skipping duplicate message:', processedMessage.id);
                     return prev;
@@ -463,64 +468,82 @@ export function useRealtimeMessages({
                   console.log('Updated messages after INSERT:', {
                     previousCount: prev.length,
                     newCount: updated.length,
-                    messageId: processedMessage.id,
-                    lastMessage: updated[updated.length - 1]
+                    messageId: processedMessage.id
                   });
                   return updated;
-                });
-              } else if (eventType === 'UPDATE') {
-                setMessages(prev => {
-                  const existing = prev.findIndex(msg => msg.id === processedMessage.id);
-                  if (existing >= 0) {
-                    const updated = [...prev];
-                    updated[existing] = processedMessage;
-                    console.log('Updated existing message:', processedMessage.id);
-                    return updated;
-                  }
-                  return prev;
-                });
-              }
+                } else if (eventType === 'UPDATE') {
+                  return prev.map(msg => 
+                    msg.id === processedMessage.id ? processedMessage : msg
+                  );
+                }
+                return prev;
+              });
+            } catch (err) {
+              console.error('Error processing message update:', err);
             }
-          } catch (err) {
-            console.error('Error processing message update:', err);
           }
-        }
-      )
-      .subscribe((status, err) => {
-        if (!isCurrentSubscription) return;
-        if (err) {
-          console.error('Message subscription error:', err);
-          // If we get a "Too many channels" error, try to clean up and retry
-          if (err.message?.includes('Too many channels')) {
-            console.log('Too many channels, cleaning up and retrying...');
-            // Clean up all channels except the current one
-            supabase.getChannels().forEach(ch => {
-              if (ch.topic !== subscriptionId) {
-                supabase.removeChannel(ch);
-              }
-            });
-            // Retry subscription after cleanup
+        )
+        .subscribe(async (status, err) => {
+          if (!isCurrentSubscription) return;
+          
+          console.log('Subscription status update:', {
+            status,
+            error: err,
+            channelId,
+            subscriptionId,
+            timestamp: new Date().toISOString()
+          });
+
+          // Handle timeout by resubscribing
+          if (status === 'TIMED_OUT') {
+            console.log('Subscription timed out, resubscribing...');
+            channel.unsubscribe();
             setTimeout(() => {
               if (isCurrentSubscription) {
                 channel.subscribe();
               }
             }, 1000);
           }
-        } else {
-          console.log('Subscription status:', status);
-        }
-      });
 
-    // Store the subscription reference
-    subscriptionRef.current = channel;
+          if (err) {
+            console.error('Subscription error:', {
+              error: err,
+              channelId,
+              subscriptionId
+            });
 
+            if (err.message?.includes('Too many channels')) {
+              console.log('Too many channels, cleaning up and retrying...');
+              // Clean up all channels except the current one
+              supabase.getChannels().forEach(ch => {
+                if (ch.topic !== subscriptionId) {
+                  supabase.removeChannel(ch);
+                }
+              });
+              
+              // Retry subscription
+              setTimeout(() => {
+                if (isCurrentSubscription) {
+                  console.log('Retrying subscription after cleanup:', subscriptionId);
+                  setupSubscription();
+                }
+              }, 1000);
+            }
+          }
+        });
+
+      // Store the subscription reference
+      subscriptionRef.current = channel;
+    };
+
+    // Initial subscription setup
+    setupSubscription();
+
+    // Cleanup function
     return () => {
+      console.log('Cleaning up subscription on unmount:', subscriptionId);
       isCurrentSubscription = false;
-      if (subscriptionRef.current) {
-        subscriptionRef.current.unsubscribe();
-        supabase.removeChannel(subscriptionRef.current);
-        subscriptionRef.current = null;
-      }
+      cleanup();
     };
   }, [user, channelId, chatType, updateMessages]);
 
