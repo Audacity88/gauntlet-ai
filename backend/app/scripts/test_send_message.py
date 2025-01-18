@@ -1,15 +1,25 @@
+#!/usr/bin/env python
+import os
+import sys
+from pathlib import Path
+from urllib.parse import urlparse
+import base64
+import json
 import asyncio
 import httpx
-import uuid
+from datetime import datetime, timezone
 from typing import Dict, Any
-import jwt
-from datetime import datetime, timedelta
-import json
-import base64
-from app.core.config import settings
-import logging
+from uuid import UUID
 
-# Test user IDs - using UUIDs that match your Supabase users
+# Add the backend directory to the Python path
+backend_dir = str(Path(__file__).resolve().parent.parent.parent)
+sys.path.insert(0, backend_dir)
+
+from app.core.config import settings
+from app.core.security import create_jwt_token, verify_token
+from app.core.database import get_supabase_client
+
+# Test users
 USER1_ID = "71f56be5-4c32-40f1-99c5-e2458ab9c34e"
 USER2_ID = "a70786c5-ad26-4906-b041-c5b9868f950e"
 
@@ -23,12 +33,9 @@ HEADERS = {
 def generate_token(user_id: str) -> str:
     """Generate a JWT token for testing."""
     now = datetime.utcnow()
-    exp = now + timedelta(days=30)
-    
-    # Token claims required by Supabase
-    token_data = {
+    claims = {
         "aud": "authenticated",
-        "exp": int(exp.timestamp()),
+        "exp": int((now.replace(year=now.year + 1) - datetime(1970, 1, 1)).total_seconds()),
         "sub": user_id,
         "email": f"test_{user_id}@example.com",
         "phone": "",
@@ -39,64 +46,13 @@ def generate_token(user_id: str) -> str:
         "user_metadata": {},
         "role": "authenticated",
         "aal": "aal1",
-        "amr": [{"method": "password", "timestamp": int(now.timestamp())}],
-        "session_id": str(uuid.uuid4()),
-        "iat": int(now.timestamp()),
-        "iss": "supabase"
+        "amr": [{
+            "method": "password",
+            "timestamp": int((now - datetime(1970, 1, 1)).total_seconds())
+        }],
+        "session_id": "ef3d51e3-03cf-45ef-a40d-9159cc0e93ee"
     }
-    
-    # Get JWT secret
-    jwt_secret = settings.SUPABASE_JWT_SECRET
-    try:
-        if isinstance(jwt_secret, str):
-            # Add maximum padding and let b64decode handle truncation
-            padded_secret = jwt_secret + "==="
-            jwt_secret = base64.b64decode(padded_secret)
-    except Exception as e:
-        # If decoding fails, use the string as UTF-8 bytes
-        if isinstance(jwt_secret, str):
-            jwt_secret = jwt_secret.encode('utf-8')
-        logger.warning(f"Failed to decode JWT secret as base64, using as UTF-8: {e}")
-    
-    # Generate token
-    token = jwt.encode(token_data, jwt_secret, algorithm="HS256")
-    return token
-
-def verify_token(token: str) -> Dict[str, Any]:
-    """Verify a JWT token using the same settings as the backend."""
-    try:
-        # Get JWT secret
-        jwt_secret = settings.SUPABASE_JWT_SECRET
-        try:
-            if isinstance(jwt_secret, str):
-                # Add maximum padding and let b64decode handle truncation
-                padded_secret = jwt_secret + "==="
-                jwt_secret = base64.b64decode(padded_secret)
-        except Exception as e:
-            # If decoding fails, use the string as UTF-8 bytes
-            if isinstance(jwt_secret, str):
-                jwt_secret = jwt_secret.encode('utf-8')
-            logger.warning(f"Failed to decode JWT secret as base64, using as UTF-8: {e}")
-        
-        # Verify token with the same options as the backend
-        return jwt.decode(
-            token,
-            jwt_secret,
-            algorithms=["HS256"],
-            audience="authenticated",
-            issuer="supabase",
-            options={
-                "verify_signature": True,
-                "verify_exp": True,
-                "verify_aud": True,
-                "verify_iss": True,
-                "verify_sub": True,
-                "require": ["exp", "aud", "iss", "sub"]
-            }
-        )
-    except Exception as e:
-        logger.error(f"Token verification failed: {e}")
-        raise
+    return create_jwt_token(claims)
 
 async def send_message(token: str, target_user_id: str, content: str) -> Dict[str, Any]:
     """Send a message to a user"""
@@ -147,6 +103,32 @@ async def send_message(token: str, target_user_id: str, content: str) -> Dict[st
         print(f"Unexpected error: {e}")
         raise
 
+async def check_messages(token: str) -> None:
+    """Check messages in Supabase"""
+    try:
+        # Get Supabase client
+        supabase = get_supabase_client()
+        
+        # Query direct_messages table
+        response = supabase.table('direct_messages').select('*').execute()
+        
+        print("\nMessages in Supabase:")
+        if hasattr(response, 'data'):
+            for msg in response.data:
+                print(f"\nMessage ID: {msg.get('id')}")
+                print(f"Channel ID: {msg.get('channel_id')}")
+                print(f"User ID: {msg.get('user_id')}")
+                print(f"Profile ID: {msg.get('profile_id')}")
+                print(f"Content: {msg.get('content')}")
+                print(f"Message Type: {msg.get('message_type')}")
+                print(f"Metadata: {json.dumps(msg.get('metadata'), indent=2)}")
+                print(f"Created At: {msg.get('created_at')}")
+        else:
+            print("No messages found or error accessing messages")
+            
+    except Exception as e:
+        print(f"Error checking messages: {e}")
+
 async def main():
     """Main test function."""
     try:
@@ -176,7 +158,7 @@ async def main():
             response = await send_message(
                 user1_token,
                 USER2_ID,
-                "Hello! This is a test message from User 1."
+                "Hello! This is a new test message from User 1."
             )
             print("\nMessage sent successfully!")
             print(f"Response: {json.dumps(response, indent=2)}")
@@ -188,12 +170,16 @@ async def main():
             response = await send_message(
                 user2_token,
                 USER1_ID,
-                "Hi User 1! This is a response from User 2."
+                "Hi User 1! This is a new response from User 2."
             )
             print("\nMessage sent successfully!")
             print(f"Response: {json.dumps(response, indent=2)}")
         except Exception as e:
             print(f"Error sending message from User 2: {e}")
+            
+        print("\nChecking messages in Supabase...")
+        await check_messages(user1_token)
+        
     except Exception as e:
         print(f"Script error: {e}")
 

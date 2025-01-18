@@ -130,7 +130,69 @@ async def send_message(
         logger.info(f"Processing message request for target_user_id: {message.target_user_id}")
         logger.debug(f"Message content: {message.content}")
         
-        # Initialize components
+        # First, get or create a DM channel
+        try:
+            channel_response = db.rpc(
+                'find_or_create_dm_channel',
+                {
+                    'p_user_id': str(current_user.id),
+                    'p_other_user_id': message.target_user_id
+                }
+            ).execute()
+            
+            if not channel_response.data:
+                raise HTTPException(
+                    status_code=500,
+                    detail="Failed to create or find DM channel"
+                )
+            
+            channel_id = channel_response.data.get('channel_id')
+            logger.info(f"Using DM channel: {channel_id}")
+            
+        except Exception as e:
+            logger.error(f"Error creating/finding DM channel: {str(e)}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Error creating/finding DM channel: {str(e)}"
+            )
+        
+        # Store the user's message
+        try:
+            # Get the target user's profile ID for the sender's message
+            target_profile_response = db.from_('profiles').select('id').eq('id', message.target_user_id).execute()
+            if not target_profile_response.data:
+                raise HTTPException(
+                    status_code=404,
+                    detail="Target user profile not found"
+                )
+            target_profile_id = target_profile_response.data[0]['id']
+            
+            user_message_data = {
+                'channel_id': channel_id,
+                'user_id': str(current_user.id),
+                'profile_id': target_profile_id,  # Use target's profile ID
+                'content': message.content,
+                'message_type': 'text',
+                'metadata': {'source': 'user'}
+            }
+            
+            user_message_response = db.from_('direct_messages').insert(user_message_data).execute()
+            if not user_message_response:
+                raise HTTPException(
+                    status_code=500,
+                    detail="Failed to store user message"
+                )
+            
+            logger.info("Stored user message successfully")
+            
+        except Exception as e:
+            logger.error(f"Error storing user message: {str(e)}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Error storing user message: {str(e)}"
+            )
+        
+        # Initialize components for AI response
         llm = LLMProcessor(
             api_key=settings.OPENAI_API_KEY,
             model_name="gpt-3.5-turbo-instruct",
@@ -166,22 +228,54 @@ async def send_message(
         context = context_data["chunks"][0]["content"]
         username = context_data["chunks"][0]["metadata"]["username"]
         
-        # Generate response
+        # Generate AI response
         try:
             response = await llm.generate_rag_response(
                 query=message.content,
                 context=context,
                 username=username
             )
-            logger.info("Successfully generated response")
+            logger.info("Successfully generated AI response")
             logger.debug(f"Response data: {json.dumps(response, indent=2)}")
+            
+            # Get the current user's profile ID for the AI's response
+            current_profile_response = db.from_('profiles').select('id').eq('id', current_user.id).execute()
+            if not current_profile_response.data:
+                raise HTTPException(
+                    status_code=404,
+                    detail="Current user profile not found"
+                )
+            current_profile_id = current_profile_response.data[0]['id']
+            
+            # Store the AI's response
+            ai_message_data = {
+                'channel_id': channel_id,
+                'user_id': message.target_user_id,
+                'profile_id': current_profile_id,  # Use sender's profile ID
+                'content': response["content"],
+                'message_type': 'text',
+                'metadata': {
+                    'model': response.get('model'),
+                    'usage': response.get('usage'),
+                    'source': 'ai'
+                }
+            }
+            
+            ai_message_response = db.from_('direct_messages').insert(ai_message_data).execute()
+            if not ai_message_response:
+                logger.error("Failed to store AI response message")
+                # Don't raise an exception here, still return the response to the user
+            else:
+                logger.info("Stored AI response successfully")
+            
             return response
+            
         except Exception as e:
-            logger.error(f"Error generating response: {str(e)}")
+            logger.error(f"Error generating or storing AI response: {str(e)}")
             logger.exception(e)
             raise HTTPException(
                 status_code=500,
-                detail=f"Error generating response: {str(e)}"
+                detail=f"Error generating or storing AI response: {str(e)}"
             )
             
     except HTTPException:
