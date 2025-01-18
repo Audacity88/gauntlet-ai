@@ -61,16 +61,19 @@ class HistoryRequest(BaseModel):
         return UUID(self.target_user_id)
 
 @router.post("/user_summary")
+@router.options("/user_summary")
 async def get_user_summary(
     request: UserSummaryRequest,
     current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[Client, Depends(get_db)]
 ) -> Dict[str, Any]:
     """Get a summary of the target user's profile and recent activity."""
+    logger.info(f"Processing user summary request for target_user_id: {request.target_user_id}")
     try:
         # Get user profile
         target_user = await get_user_by_id(db, request.target_user_uuid)
         if not target_user:
+            logger.warning(f"User not found: {request.target_user_id}")
             raise HTTPException(
                 status_code=404,
                 detail=f"User {request.target_user_id} not found"
@@ -84,8 +87,7 @@ async def get_user_summary(
             is_dm=False
         )
         
-        # Format the response
-        return {
+        response_data = {
             "user": {
                 "id": str(target_user.id),
                 "username": target_user.username,
@@ -103,6 +105,9 @@ async def get_user_summary(
                 for msg in messages
             ] if messages else []
         }
+        
+        logger.info(f"Successfully retrieved user summary for {request.target_user_id}")
+        return response_data
         
     except HTTPException:
         raise

@@ -31,4 +31,16 @@ app.add_middleware(
 )
 
 # Include routers
-app.include_router(api_router, prefix="/api") 
+app.include_router(api_router, prefix="/api")
+
+@app.on_event("startup")
+async def startup_event():
+    """Log all registered routes on startup."""
+    logger.info("Application starting up...")
+    logger.info("Registered routes:")
+    for route in app.routes:
+        logger.info(f"Route: {route.path} [{route.methods}]")
+    logger.info("CORS configuration:")
+    logger.info(f"Allow origins: {app.user_middleware[0].options.get('allow_origins')}")
+    logger.info(f"Allow methods: {app.user_middleware[0].options.get('allow_methods')}")
+    logger.info("Application startup complete") 

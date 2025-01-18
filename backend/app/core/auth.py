@@ -4,11 +4,13 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from supabase import Client
 import jwt
+import logging
 
 from app.core.config import settings
 from app.core.database import get_db
 from app.models.user import User, UserStatus
 
+logger = logging.getLogger(__name__)
 security = HTTPBearer()
 
 async def get_current_user(
@@ -21,6 +23,15 @@ async def get_current_user(
     try:
         # Decode token to get user ID
         token = credentials.credentials
+        logger.debug(f"Attempting to decode token: {token[:10]}...")
+        
+        if not settings.SUPABASE_JWT_SECRET:
+            logger.error("SUPABASE_JWT_SECRET is not set")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Server configuration error: JWT secret not set",
+            )
+            
         try:
             decoded = jwt.decode(
                 token, 
@@ -29,9 +40,16 @@ async def get_current_user(
                 audience="authenticated",
                 options={"verify_aud": False}  # Skip audience verification
             )
-            print(f"Successfully decoded token: {decoded}")
+            logger.info(f"Successfully decoded token for user: {decoded.get('sub', 'unknown')}")
+        except jwt.ExpiredSignatureError:
+            logger.warning("Token has expired")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Token has expired",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
         except jwt.InvalidTokenError as e:
-            print(f"Error decoding token: {str(e)}")
+            logger.error(f"Error decoding token: {str(e)}")
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail=f"Invalid token format: {str(e)}",
@@ -40,18 +58,19 @@ async def get_current_user(
         
         user_id = decoded.get("sub")
         if not user_id:
+            logger.error("Token missing user ID")
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Token missing user ID",
                 headers={"WWW-Authenticate": "Bearer"},
             )
             
-        print(f"Checking profiles for user_id: {user_id}")
+        logger.info(f"Checking profiles for user_id: {user_id}")
         
         try:
             # Get user data from profiles table
             response = db.from_("profiles").select("*").eq("id", user_id).execute()
-            print(f"Profile query response: {response}")
+            logger.debug(f"Profile query response: {response}")
             
             if not response.data:
                 # Profile doesn't exist, create it
@@ -67,11 +86,13 @@ async def get_current_user(
                     "updated_at": datetime.now(timezone.utc)
                 }
                 
+                logger.info(f"Creating new profile for user {user_id}")
                 try:
                     insert_response = db.from_("profiles").insert(profile_data).execute()
-                    print(f"Profile creation response: {insert_response}")
+                    logger.debug(f"Profile creation response: {insert_response}")
                     
                     if not insert_response.data:
+                        logger.error(f"Failed to create profile for user {user_id}")
                         raise HTTPException(
                             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
                             detail="Failed to create user profile"
@@ -79,7 +100,7 @@ async def get_current_user(
                         
                     user_data = insert_response.data[0]
                 except Exception as e:
-                    print(f"Error creating profile: {str(e)}")
+                    logger.error(f"Error creating profile: {str(e)}")
                     raise HTTPException(
                         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
                         detail=f"Error creating user profile: {str(e)}"
@@ -96,7 +117,7 @@ async def get_current_user(
         except HTTPException:
             raise
         except Exception as e:
-            print(f"Error querying profile: {str(e)}")
+            logger.error(f"Error querying profile: {str(e)}")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Database error: {str(e)}",
@@ -105,7 +126,7 @@ async def get_current_user(
     except HTTPException:
         raise
     except Exception as e:
-        print(f"Unexpected error in get_current_user: {str(e)}")
+        logger.error(f"Unexpected error in get_current_user: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=f"Could not validate credentials: {str(e)}",
