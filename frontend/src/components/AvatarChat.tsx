@@ -110,6 +110,9 @@ export function AvatarChat({ className = '' }: AvatarChatProps) {
       setMessageHistory([]); // Reset message history
       setChatError(null);
 
+      // Fetch the user's public message history
+      await fetchMessageHistory(user.id);
+
       // Create or get existing DM channel
       const channelId = await createDirectMessage(user.username);
 
@@ -118,6 +121,13 @@ export function AvatarChat({ className = '' }: AvatarChatProps) {
       if (sessionError || !session?.access_token) {
         throw new Error('No active session or missing access token');
       }
+
+      // Debug token format
+      console.log('Token debug:', {
+        tokenLength: session.access_token.length,
+        tokenParts: session.access_token.split('.').length,
+        tokenStart: session.access_token.substring(0, 20) + '...',
+      });
 
       // Check if there's already an introduction message for this user
       const { data: existingMessages, error: messagesError } = await supabase
@@ -138,14 +148,40 @@ export function AvatarChat({ className = '' }: AvatarChatProps) {
       if (!existingMessages?.length) {
         console.log('No existing introduction found, requesting user summary...');
         
+        // Get messages from the public messages table
+        const { data: publicMessages, error: publicMessagesError } = await supabase
+          .from('messages')
+          .select('content, inserted_at, id')
+          .eq('user_id', user.id)
+          .order('inserted_at', { ascending: false })
+          .limit(50);
+
+        if (publicMessagesError) {
+          console.error('Error fetching public messages:', publicMessagesError);
+          throw publicMessagesError;
+        }
+
+        // Format messages for the API
+        const formattedMessages = (publicMessages || []).map(msg => ({
+          content: msg.content,
+          metadata: {
+            username: user.username,
+            timestamp: msg.inserted_at,
+            channel: 'channel',
+            message_id: msg.id
+          }
+        }));
+        
         // Make API request to get user summary
         const requestBody = {
           target_user_id: user.id,
-          mode: 'direct'
+          mode: 'direct',
+          message_history: formattedMessages
         };
         console.log('Sending user summary request:', requestBody);
         
-        const response = await fetch('http://localhost:8000/api/chat/user_summary', {
+        const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+        const response = await fetch(`${API_BASE_URL}/api/chat/user_summary`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -180,7 +216,7 @@ export function AvatarChat({ className = '' }: AvatarChatProps) {
     } finally {
       setIsLoading(false);
     }
-  }, [createDirectMessage]);
+  }, [createDirectMessage, fetchMessageHistory]);
 
   const formatMessageHistory = useCallback((messages: MessageHistory[]) => {
     return messages.map(msg => ({
@@ -208,6 +244,13 @@ export function AvatarChat({ className = '' }: AvatarChatProps) {
         throw new Error('No active session or missing access token')
       }
 
+      // Debug token format
+      console.log('Send message token debug:', {
+        tokenLength: session.access_token.length,
+        tokenParts: session.access_token.split('.').length,
+        tokenStart: session.access_token.substring(0, 20) + '...',
+      });
+
       // Log token details for debugging
       console.log('Making avatar API request:', {
         tokenLength: session.access_token.length,
@@ -216,8 +259,9 @@ export function AvatarChat({ className = '' }: AvatarChatProps) {
         historyLength: messageHistory.length
       })
 
+      const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
       // Make API request to get avatar's response - this will also create the user's message
-      const response = await fetch('http://localhost:8000/api/chat/send', {
+      const response = await fetch(`${API_BASE_URL}/api/chat/send`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -303,7 +347,7 @@ export function AvatarChat({ className = '' }: AvatarChatProps) {
       }
 
       // Call the API to clear test user's messages
-      const response = await fetch('http://localhost:8000/api/chat/clear', {
+      const response = await fetch('${API_BASE_URL}/api/chat/clear', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -375,7 +419,7 @@ export function AvatarChat({ className = '' }: AvatarChatProps) {
                 <p>Target: {targetUser?.username || 'Not set'}</p>
                 <p>Message ID: {messageId || 'None'}</p>
                 <p>History: {messageHistory.length} messages</p>
-                <p>Messages: {messages?.length || 0} total</p>
+                <p>AI Messages: {messages?.length || 0} total</p>
                 {isLoading && <p className="text-indigo-600">Loading user summary...</p>}
                 {chatError && <p className="text-red-500">Error: {chatError}</p>}
               </div>
