@@ -2,20 +2,26 @@ from typing import AsyncGenerator
 import os
 from supabase import create_client, Client
 from dotenv import load_dotenv
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
+from sqlalchemy.orm import declarative_base
 
 load_dotenv()
 
 # Initialize Supabase client
 supabase_url = os.getenv("SUPABASE_URL")
 supabase_key = os.getenv("SUPABASE_SERVICE_KEY")
+database_url = os.getenv("DATABASE_URL")
 
 if not supabase_url or not supabase_key:
     raise ValueError("Missing required environment variables: SUPABASE_URL and SUPABASE_SERVICE_KEY must be set")
 
+if not database_url:
+    raise ValueError("Missing required environment variable: DATABASE_URL must be set")
+
 print(f"Initializing Supabase client with URL: {supabase_url}")
 
 try:
-    # Create client with service role key
+    # Create Supabase client with service role key
     supabase: Client = create_client(
         supabase_url,
         supabase_key
@@ -43,6 +49,11 @@ except Exception as e:
 # Set default schema to public
 postgrest_client = supabase.postgrest.schema("public")
 
+# SQLAlchemy setup
+engine = create_async_engine(database_url)
+async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+Base = declarative_base()
+
 async def get_db() -> AsyncGenerator[Client, None]:
     """
     Get a database client instance.
@@ -53,3 +64,14 @@ async def get_db() -> AsyncGenerator[Client, None]:
     finally:
         # No need to close the client after each request
         pass
+
+async def get_session() -> AsyncGenerator[AsyncSession, None]:
+    """
+    Get a database session instance.
+    This function returns an async SQLAlchemy session.
+    """
+    async with async_session() as session:
+        try:
+            yield session
+        finally:
+            await session.close()
