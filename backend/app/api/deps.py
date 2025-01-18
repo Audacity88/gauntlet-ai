@@ -7,7 +7,7 @@ from sqlalchemy import select, Table
 from datetime import datetime, timedelta
 from app.core.config import settings
 from app.core.database import get_session
-from app.models.user import User
+from app.models.user import UserDB, User
 import logging
 import base64
 
@@ -92,23 +92,25 @@ async def get_current_user(
     
     try:
         # Get user from database using Supabase user ID
-        stmt = select(User).where(User.id == sub)
+        stmt = select(UserDB).where(UserDB.id == sub)
         result = await session.execute(stmt)
-        user = result.scalar_one_or_none()
+        db_user = result.scalar_one_or_none()
         
-        if user is None:
+        if db_user is None:
             # Create user if they don't exist
-            user = User(
+            username = email.split('@')[0] if email else f"user_{sub[:8]}"
+            db_user = UserDB(
                 id=sub,
                 email=email,
+                username=username,
                 is_active=True
             )
-            session.add(user)
+            session.add(db_user)
             await session.commit()
             logger.info(f"Created new user with ID {sub}")
-            return user
-            
-        return user
+        
+        # Convert SQLAlchemy model to Pydantic model
+        return User.model_validate(db_user)
         
     except Exception as e:
         logger.error(f"Database error: {str(e)}")

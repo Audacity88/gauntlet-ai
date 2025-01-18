@@ -2,12 +2,31 @@ from datetime import datetime
 from typing import Optional, Dict, Any
 from pydantic import BaseModel, EmailStr, Field, UUID4, ConfigDict
 from enum import Enum
+from sqlalchemy import Column, String, DateTime, Boolean, Enum as SQLAlchemyEnum
+from sqlalchemy.dialects.postgresql import UUID
+from app.core.database import Base
 
 class UserStatus(str, Enum):
     ONLINE = "online"
     OFFLINE = "offline"
     AWAY = "away"
 
+# SQLAlchemy Model
+class UserDB(Base):
+    __tablename__ = "users"
+
+    id = Column(UUID(as_uuid=True), primary_key=True)
+    email = Column(String, unique=True, index=True)
+    username = Column(String, unique=True, index=True)
+    full_name = Column(String, nullable=True)
+    avatar_url = Column(String, nullable=True)
+    status = Column(SQLAlchemyEnum(UserStatus), default=UserStatus.OFFLINE)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    last_seen = Column(DateTime, nullable=True)
+
+# Pydantic Models
 class UserBase(BaseModel):
     username: str
     full_name: Optional[str] = None

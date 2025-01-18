@@ -5,11 +5,13 @@ import jwt
 import uvicorn
 from typing import Dict, Optional
 from pydantic import BaseModel
+from pydantic_settings import BaseSettings, SettingsConfigDict
 import logging
 from datetime import datetime, timezone
 import os
 from dotenv import load_dotenv
 import base64
+import json
 
 # Load environment variables
 load_dotenv()
@@ -21,22 +23,52 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Settings configuration
+class Settings(BaseSettings):
+    """Application settings."""
+    
+    model_config = SettingsConfigDict(
+        env_file='.env',
+        env_file_encoding='utf-8',
+        case_sensitive=True,
+        extra='allow'  # Allow extra fields
+    )
+    
+    SUPABASE_JWT_SECRET: str
+
+settings = Settings()
+
 # Create FastAPI app
 app = FastAPI(title="Test Chat API")
 
 # CORS configuration
+origins = [
+    "http://localhost:3000",     # Local development
+    "http://localhost:5173",     # Vite default
+    "https://chatgenius-nu.vercel.app",  # Vercel production
+    "https://chatgenius-git-main-dangilles.vercel.app",  # Vercel preview
+    "https://chatgenius-dangilles.vercel.app",  # Vercel custom domain
+]
+
+# Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
-    allow_headers=["*"]
+    allow_headers=["*"],
+    expose_headers=["*"],
+    max_age=3600,
 )
 
 # JWT Configuration
 def get_jwt_secret():
     """Get JWT secret and decode if base64 encoded"""
-    secret = os.getenv('SUPABASE_JWT_SECRET', 'your-test-secret-key')
+    secret = settings.SUPABASE_JWT_SECRET
+    if not secret:
+        logger.error("SUPABASE_JWT_SECRET is not set")
+        return None
+        
     try:
         # Try to decode as base64
         decoded = base64.b64decode(secret)
@@ -44,13 +76,53 @@ def get_jwt_secret():
         return decoded
     except Exception as e:
         logger.warning(f"JWT secret is not base64 encoded, using as is: {str(e)}")
+        if isinstance(secret, str):
+            return secret.encode('utf-8')
         return secret
 
-MOCK_JWT_SECRET = get_jwt_secret()
-logger.info(f"Using JWT secret (first 5 chars of raw): {str(MOCK_JWT_SECRET)[:5]}...")
+JWT_SECRET = get_jwt_secret()
+logger.info(f"Using JWT secret (first 5 chars of raw): {str(JWT_SECRET)[:5]}...")
 
-# Mock users store - will be populated dynamically
-MOCK_USERS = {}
+# In-memory storage
+class UserStore:
+    def __init__(self):
+        self.users: Dict[str, Dict] = {}
+        self.messages: Dict[str, list] = {}
+    
+    def get_user(self, user_id: str) -> Optional[Dict]:
+        return self.users.get(user_id)
+    
+    def create_user(self, user_id: str, email: str) -> Dict:
+        user = {
+            "id": user_id,
+            "email": email,
+            "username": email.split('@')[0] if email else f"user_{user_id[:8]}",
+            "status": "ONLINE",
+            "created_at": str(datetime.now(timezone.utc)),
+            "updated_at": str(datetime.now(timezone.utc))
+        }
+        self.users[user_id] = user
+        self.messages[user_id] = []
+        return user
+    
+    def add_message(self, user_id: str, content: str) -> Dict:
+        if user_id not in self.messages:
+            self.messages[user_id] = []
+        
+        message = {
+            "id": f"msg_{len(self.messages[user_id])}",
+            "content": content,
+            "user_id": user_id,
+            "created_at": str(datetime.now(timezone.utc))
+        }
+        self.messages[user_id].append(message)
+        return message
+    
+    def get_messages(self, user_id: str, limit: int = 10) -> list:
+        return self.messages.get(user_id, [])[-limit:]
+
+# Create global store
+store = UserStore()
 
 # Security
 security = HTTPBearer()
@@ -62,27 +134,12 @@ class MessageRequest(BaseModel):
 class UserSummaryRequest(BaseModel):
     target_user_id: str
 
-def get_or_create_user(user_id: str, email: str) -> Dict:
-    """Get a user from mock store or create if doesn't exist"""
-    if user_id not in MOCK_USERS:
-        username = email.split('@')[0] if email else f"user_{user_id[:8]}"
-        MOCK_USERS[user_id] = {
-            "id": user_id,
-            "username": username,
-            "email": email,
-            "status": "ONLINE",
-            "created_at": str(datetime.now(timezone.utc)),
-            "updated_at": str(datetime.now(timezone.utc))
-        }
-        logger.info(f"Created new mock user: {username} ({user_id})")
-    return MOCK_USERS[user_id]
-
 def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)) -> Dict:
     try:
         token = credentials.credentials
         logger.debug(f"Received token: {token[:10]}...")
         
-        if not MOCK_JWT_SECRET:
+        if not JWT_SECRET:
             logger.error("SUPABASE_JWT_SECRET is not set")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -96,8 +153,6 @@ def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)) 
                 header, payload, signature = parts
                 logger.debug(f"Token structure - Header: {header[:10]}... Payload: {payload[:10]}... Signature: {signature[:10]}...")
                 # Decode payload without verification for debugging
-                import base64
-                import json
                 padded_payload = payload + '=' * (-len(payload) % 4)
                 decoded_payload = base64.b64decode(padded_payload)
                 payload_data = json.loads(decoded_payload)
@@ -119,7 +174,7 @@ def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)) 
                 message = f"{parts[0]}.{parts[1]}"
                 expected_sig = base64.urlsafe_b64encode(
                     hmac.new(
-                        MOCK_JWT_SECRET if isinstance(MOCK_JWT_SECRET, bytes) else MOCK_JWT_SECRET.encode(),
+                        JWT_SECRET if isinstance(JWT_SECRET, bytes) else JWT_SECRET.encode(),
                         message.encode(),
                         hashlib.sha256
                     ).digest()
@@ -132,7 +187,7 @@ def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)) 
             # Now try actual verification
             decoded = jwt.decode(
                 token,
-                MOCK_JWT_SECRET,
+                JWT_SECRET,
                 algorithms=["HS256"],
                 audience="authenticated"
             )
@@ -156,10 +211,14 @@ def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)) 
         
         # Get or create user from token data
         email = decoded.get("email", "")
-        user = get_or_create_user(user_id, email)
+        user = store.get_user(user_id)
+        if not user:
+            user = store.create_user(user_id, email)
+            logger.info(f"Created new user: {user['username']} ({user_id})")
+        
         logger.debug(f"Retrieved/created user: {user['username']}")
-            
         return user
+            
     except jwt.ExpiredSignatureError:
         logger.warning("Token has expired")
         raise HTTPException(
@@ -188,13 +247,14 @@ async def send_message(
     current_user: Dict = Depends(verify_token)
 ) -> Dict:
     logger.info(f"Received message from user {current_user['username']}")
+    message = store.add_message(current_user['id'], request.content)
     return {
         "status": "success",
         "message": "Message sent successfully",
         "data": {
-            "content": request.content,
+            "content": message['content'],
             "sender": current_user["username"],
-            "timestamp": str(datetime.now(timezone.utc))
+            "timestamp": message['created_at']
         }
     }
 
@@ -203,27 +263,19 @@ async def get_user_summary(
     request: UserSummaryRequest,
     current_user: Dict = Depends(verify_token)
 ) -> Dict:
-    target_user = MOCK_USERS.get(request.target_user_id)
+    target_user = store.get_user(request.target_user_id)
     if not target_user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User not found"
         )
         
+    recent_messages = store.get_messages(request.target_user_id)
     return {
         "status": "success",
         "data": {
             "user": target_user,
-            "recent_messages": [
-                {
-                    "content": "Mock message 1",
-                    "timestamp": str(datetime.now(timezone.utc))
-                },
-                {
-                    "content": "Mock message 2",
-                    "timestamp": str(datetime.now(timezone.utc))
-                }
-            ]
+            "recent_messages": recent_messages
         }
     }
 
@@ -233,13 +285,39 @@ async def health_check():
 
 if __name__ == "__main__":
     print("\n=== Test Configuration ===")
-    print(f"JWT Secret being used (first 5 chars): {str(MOCK_JWT_SECRET)[:5]}...")
-    print("\nEndpoints:")
+    print(f"JWT Secret being used (first 5 chars): {str(JWT_SECRET)[:5]}...")
+    
+    print("\n=== CORS Configuration ===")
+    print("Allowed Origins:")
+    for origin in origins:
+        print(f"  - {origin}")
+    print("\nAllowed Methods: *")
+    print("Allowed Headers: *")
+    print("Allow Credentials: True")
+    print("Max Age: 3600")
+    
+    print("\n=== API Endpoints ===")
     print("1. POST /api/chat/send")
     print("2. POST /api/chat/user_summary")
     print("3. GET /api/health")
-    print("\nUse your Supabase token in the Authorization header:")
-    print('Authorization: Bearer <your-supabase-token>')
+    
+    print("\n=== Testing Instructions ===")
+    print("1. Use your Supabase token in the Authorization header:")
+    print('   Authorization: Bearer <your-supabase-token>')
+    print("\n2. Test CORS with curl:")
+    print('   # Test preflight (OPTIONS):')
+    print('   curl -X OPTIONS http://localhost:8000/api/chat/send \\')
+    print('     -H "Origin: http://localhost:3000" \\')
+    print('     -H "Access-Control-Request-Method: POST" \\')
+    print('     -H "Access-Control-Request-Headers: authorization,content-type" \\')
+    print('     -v')
+    print('\n   # Test actual request:')
+    print('   curl -X POST http://localhost:8000/api/chat/send \\')
+    print('     -H "Origin: http://localhost:3000" \\')
+    print('     -H "Authorization: Bearer <your-token>" \\')
+    print('     -H "Content-Type: application/json" \\')
+    print('     -d \'{"content": "Hello, world!"}\' \\')
+    print('     -v')
     
     # Run the server
     uvicorn.run(app, host="0.0.0.0", port=8000) 
