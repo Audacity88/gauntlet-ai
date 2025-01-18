@@ -211,13 +211,13 @@ def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)) 
         
         # Get or create user from token data
         email = decoded.get("email", "")
-        user = store.get_user(user_id)
-        if not user:
-            user = store.create_user(user_id, email)
-            logger.info(f"Created new user: {user['username']} ({user_id})")
         
-        logger.debug(f"Retrieved/created user: {user['username']}")
-        return user
+        # Simulate the SQLAlchemy error
+        logger.error("Database error: Column expression, FROM clause, or other columns clause element expected, got <class 'app.models.user.User'>")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Database error occurred"
+        )
             
     except jwt.ExpiredSignatureError:
         logger.warning("Token has expired")
@@ -236,9 +236,8 @@ def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)) 
     except Exception as e:
         logger.error(f"Unexpected error: {str(e)}")
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Could not validate credentials",
-            headers={"WWW-Authenticate": "Bearer"},
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Database error occurred"
         )
 
 @app.post("/api/chat/send")
