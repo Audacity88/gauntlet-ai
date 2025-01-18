@@ -55,40 +55,26 @@ export function AvatarChat({ className = '' }: AvatarChatProps) {
     chatType: 'dm'  // Always use DM mode
   });
 
-  // Find the most recent summary message from the current session
-  const latestSummary = messages?.filter(msg => {
-    // Only consider messages that are both avatar responses and introductions
-    return msg.metadata?.is_avatar_response && 
-           msg.metadata?.is_introduction &&
-           // Check if this is the first message in the conversation
-           !messages.some(m => 
-             m.channel_id === msg.channel_id && 
-             new Date(m.created_at) < new Date(msg.created_at)
-           );
-  })[0];
+  // Find the most recent summary message
+  const latestSummary = messages?.find(msg => 
+    msg.metadata?.is_avatar_response && 
+    msg.metadata?.is_introduction
+  );
 
-  // Filter messages to show either:
-  // 1. All messages if no summary exists
-  // 2. Messages after the most recent summary if it exists
-  const displayMessages = messages?.filter(msg => {
-    // If no summary exists, show all messages
-    if (!latestSummary) return true;
-    
-    // Show messages after or equal to the latest summary
-    return new Date(msg.created_at).getTime() >= new Date(latestSummary.created_at).getTime();
-  });
+  // Filter messages to show all messages
+  const displayMessages = messages;
 
   // Debug logging for message filtering
   useEffect(() => {
     if (messages?.length) {
-      const now = new Date().getTime();
       console.log('Message filtering debug:', {
         totalMessages: messages.length,
         displayedMessages: displayMessages?.length,
         latestSummaryId: latestSummary?.id,
         latestSummaryTime: latestSummary?.created_at,
         firstMessageTime: messages[0]?.created_at,
-        lastMessageTime: messages[messages.length - 1]?.created_at
+        lastMessageTime: messages[messages.length - 1]?.created_at,
+        allMessageIds: messages.map(m => m.id)
       });
     }
   }, [messages, displayMessages, latestSummary]);
