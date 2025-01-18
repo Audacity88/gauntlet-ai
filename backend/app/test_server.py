@@ -5,6 +5,7 @@ import jwt
 import uvicorn
 from typing import Dict, Optional
 from pydantic import BaseModel
+from pydantic_settings import BaseSettings, SettingsConfigDict
 import logging
 from datetime import datetime, timezone
 import os
@@ -21,6 +22,20 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Settings configuration
+class Settings(BaseSettings):
+    """Application settings."""
+    
+    model_config = SettingsConfigDict(
+        env_file='.env',
+        env_file_encoding='utf-8',
+        case_sensitive=True
+    )
+    
+    SUPABASE_JWT_SECRET: str
+
+settings = Settings()
+
 # Create FastAPI app
 app = FastAPI(title="Test Chat API")
 
@@ -36,7 +51,11 @@ app.add_middleware(
 # JWT Configuration
 def get_jwt_secret():
     """Get JWT secret and decode if base64 encoded"""
-    secret = os.getenv('SUPABASE_JWT_SECRET', 'your-test-secret-key')
+    secret = settings.SUPABASE_JWT_SECRET
+    if not secret:
+        logger.error("SUPABASE_JWT_SECRET is not set")
+        return None
+        
     try:
         # Try to decode as base64
         decoded = base64.b64decode(secret)
@@ -44,6 +63,8 @@ def get_jwt_secret():
         return decoded
     except Exception as e:
         logger.warning(f"JWT secret is not base64 encoded, using as is: {str(e)}")
+        if isinstance(secret, str):
+            return secret.encode('utf-8')
         return secret
 
 MOCK_JWT_SECRET = get_jwt_secret()

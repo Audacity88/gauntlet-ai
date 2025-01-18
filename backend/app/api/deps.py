@@ -9,11 +9,30 @@ from app.core.config import settings
 from app.core.database import get_session
 from app.models.user import User
 import logging
+import base64
 
 logger = logging.getLogger(__name__)
 
+def get_jwt_secret():
+    """Get JWT secret and decode if base64 encoded"""
+    secret = settings.SUPABASE_JWT_SECRET
+    if not secret:
+        logger.error("SUPABASE_JWT_SECRET is not set")
+        return None
+        
+    try:
+        # Try to decode as base64
+        decoded = base64.b64decode(secret)
+        logger.info("Successfully decoded base64 JWT secret")
+        return decoded
+    except Exception as e:
+        logger.warning(f"JWT secret is not base64 encoded, using as is: {str(e)}")
+        if isinstance(secret, str):
+            return secret.encode('utf-8')
+        return secret
+
 # JWT configuration
-SECRET_KEY = settings.SECRET_KEY  # Use Supabase JWT secret for token validation
+JWT_SECRET = get_jwt_secret()  # Use Supabase JWT secret for token validation
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = settings.ACCESS_TOKEN_EXPIRE_MINUTES
 
@@ -33,13 +52,13 @@ async def get_current_user(
     try:
         # Log token details for debugging
         logger.debug("Attempting to decode JWT token")
-        logger.debug(f"Using secret key: {SECRET_KEY[:10]}...")  # Only log first 10 chars for security
+        logger.debug(f"Using JWT secret (first 5 bytes): {JWT_SECRET[:5]}...")  # Only log first 5 chars for security
         logger.debug(f"Token: {token[:20]}...")  # Only log first 20 chars for security
         
         # Decode the Supabase JWT token
         payload = jwt.decode(
             token, 
-            SECRET_KEY, 
+            JWT_SECRET, 
             algorithms=[ALGORITHM],
             verify=True,
             options={
@@ -97,5 +116,5 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None) -> s
     else:
         expire = datetime.utcnow() + timedelta(minutes=15)
     to_encode.update({"exp": expire})
-    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    encoded_jwt = jwt.encode(to_encode, JWT_SECRET, algorithm=ALGORITHM)
     return encoded_jwt 
