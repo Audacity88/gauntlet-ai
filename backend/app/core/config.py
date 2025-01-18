@@ -1,25 +1,21 @@
 from typing import Optional
 import logging
-from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import ConfigDict
+from pydantic import BaseSettings
 import os
 from urllib.parse import urlparse, parse_qs, urlencode
+from dotenv import load_dotenv
 
 logger = logging.getLogger(__name__)
+load_dotenv()
 
 class Settings(BaseSettings):
     """Application settings."""
     
-    model_config = SettingsConfigDict(
-        env_file='.env',
-        env_file_encoding='utf-8',
-        case_sensitive=True,
-        extra='allow',
-        env_prefix='',  # No prefix for env vars
-        env_nested_delimiter='__',
-        env_file_override=True  # .env file takes precedence over environment variables
-    )
-    
+    class Config:
+        env_file = '.env'
+        env_file_encoding = 'utf-8'
+        case_sensitive = True
+        
     # Supabase Configuration
     SUPABASE_URL: str
     SUPABASE_KEY: str
