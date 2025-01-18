@@ -252,71 +252,105 @@ export function AvatarChat({ className = '' }: AvatarChatProps) {
     }));
   }, []);
 
+  const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+
   const handleSendMessage = useCallback(async (content: string) => {
-    if (!targetUser) {
+    if (!targetUser?.id) {
       alert('Please select a target user first');
       return;
     }
 
     try {
-      // Get current session for API request
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession()
-      if (sessionError || !session?.access_token) {
-        throw new Error('No active session or missing access token')
+      console.log('Starting message send process...');
+      
+      // Force a session refresh to get a fresh token
+      console.log('Refreshing session...');
+      const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
+      if (refreshError) {
+        console.error('Session refresh error:', refreshError);
+        throw new Error('Failed to refresh session: ' + refreshError.message);
+      }
+      if (!refreshData.session?.access_token) {
+        console.error('No access token after refresh');
+        throw new Error('No access token available after refresh');
       }
 
-      // Debug token format
-      console.log('Token debug:', {
-        tokenLength: session.access_token.length,
-        tokenParts: session.access_token.split('.').length,
-        tokenStart: session.access_token.substring(0, 20) + '...',
+      const token = refreshData.session.access_token;
+      console.log('Token refresh successful');
+
+      // Debug log the token format
+      const tokenParts = token.split('.');
+      if (tokenParts.length === 3) {
+        const [headerB64, payloadB64] = tokenParts;
+        const header = JSON.parse(atob(headerB64));
+        const payload = JSON.parse(atob(payloadB64));
+        
+        console.log('Token debug:', {
+          tokenLength: token.length,
+          tokenParts: tokenParts.length,
+          tokenStart: token.substring(0, 20) + '...',
+          expiresAt: refreshData.session.expires_at ? 
+            new Date(refreshData.session.expires_at * 1000).toISOString() : 
+            'unknown',
+          header,
+          payload,
+          sessionUser: refreshData.session.user
+        });
+      } else {
+        console.error('Invalid token format - expected 3 parts, got:', tokenParts.length);
+      }
+
+      const headers = {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'Authorization': `Bearer ${token}`
+      };
+
+      const requestBody = {
+        content,
+        target_user_id: targetUser.id,
+        mode: 'direct'
+      };
+
+      // Send the POST request
+      console.log('Sending message request:', {
+        url: `${API_BASE_URL}/api/chat/send`,
+        headers: { ...headers, Authorization: 'Bearer [REDACTED]' },
+        body: requestBody
       });
 
-      const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-      // Make API request to get avatar's response - this will also create the user's message
       const response = await fetch(`${API_BASE_URL}/api/chat/send`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`,
-          'Accept': 'application/json'
-        },
-        credentials: 'include',  // Include cookies if any
-        body: JSON.stringify({
-          content,
-          target_user_id: targetUser.id,
-          mode: 'direct'
-        })
+        headers,
+        body: JSON.stringify(requestBody)
+      });
+
+      console.log('Response received:', {
+        status: response.status,
+        statusText: response.statusText,
+        headers: Object.fromEntries(response.headers.entries())
       });
 
       if (!response.ok) {
-        const errorText = await response.text()
-        console.error('Avatar API error:', {
+        const errorText = await response.text();
+        console.error('Error sending message:', {
           status: response.status,
           statusText: response.statusText,
           error: errorText,
           headers: Object.fromEntries(response.headers.entries())
-        })
-        throw new Error(`Avatar API error: ${response.status} ${response.statusText} - ${errorText}`)
+        });
+        throw new Error(`API error: ${response.status} ${response.statusText} - ${errorText}`);
       }
 
-      console.log('Avatar API response received:', {
-        status: response.status,
-        headers: Object.fromEntries(response.headers.entries())
-      })
-
-      const data = await response.json()
-      console.log('Received avatar response:', data)
+      const data = await response.json();
+      console.log('Message sent successfully:', data);
       
-      // The avatar API will handle creating the response message in the database
-      // No need to call sendMessage again
     } catch (error) {
-      console.error('Error in handleSendMessage:', error)
-      setChatError(error instanceof Error ? error.message : 'An error occurred')
-      // Display error in UI
-      alert(error instanceof Error ? error.message : 'An error occurred while sending the message')
+      console.error('Error in handleSendMessage:', error);
+      setChatError(error instanceof Error ? error.message : 'An error occurred');
+      alert(error instanceof Error ? error.message : 'An error occurred while sending the message');
     }
-  }, [targetUser, sendMessage, messageId, messageHistory]);
+  }, [targetUser, API_BASE_URL]);
 
   const handleClearContext = useCallback(async () => {
     if (!targetUser?.channelId) {

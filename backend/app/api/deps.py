@@ -12,24 +12,16 @@ import base64
 logger = logging.getLogger(__name__)
 
 def get_jwt_secret():
-    """Get JWT secret and decode if base64 encoded"""
+    """Get JWT secret and encode it to bytes"""
     secret = settings.SUPABASE_JWT_SECRET
     if not secret:
         logger.error("SUPABASE_JWT_SECRET is not set")
         return None
         
-    try:
-        # Add padding if needed
-        padded_secret = secret + "=" * (-len(secret) % 4)
-        # Try to decode as base64
-        decoded = base64.b64decode(padded_secret)
-        logger.info("Successfully decoded base64 JWT secret")
-        return decoded
-    except Exception as e:
-        logger.warning(f"JWT secret is not base64 encoded, using as is: {str(e)}")
-        if isinstance(secret, str):
-            return secret.encode('utf-8')
-        return secret
+    # Since we know the secret is a plain string, just encode it to bytes
+    if isinstance(secret, str):
+        return secret.encode('utf-8')
+    return secret
 
 # JWT configuration
 JWT_SECRET = get_jwt_secret()  # Use Supabase JWT secret for token validation
@@ -51,10 +43,21 @@ def get_current_user(
     try:
         # Log token details for debugging
         logger.debug("Attempting to decode JWT token")
-        logger.debug(f"Using JWT secret (first 5 bytes): {JWT_SECRET[:5]}...")  # Only log first 5 chars for security
-        logger.debug(f"Token: {token[:20]}...")  # Only log first 20 chars for security
+        logger.debug(f"Using JWT secret (first 5 bytes): {JWT_SECRET[:5] if JWT_SECRET else 'None'}...")
+        logger.debug(f"Token: {token[:20]}...")
         
-        # Decode the Supabase JWT token
+        # First try to decode without verification for debugging
+        try:
+            parts = token.split('.')
+            if len(parts) == 3:
+                header = base64.urlsafe_b64decode(parts[0] + "=" * (-len(parts[0]) % 4))
+                payload_raw = base64.urlsafe_b64decode(parts[1] + "=" * (-len(parts[1]) % 4))
+                logger.debug(f"Token header: {header.decode('utf-8')}")
+                logger.debug(f"Raw payload: {payload_raw.decode('utf-8')}")
+        except Exception as e:
+            logger.warning(f"Failed to decode token parts: {e}")
+        
+        # Decode the Supabase JWT token with minimal verification
         payload = jwt.decode(
             token, 
             JWT_SECRET, 
@@ -62,34 +65,36 @@ def get_current_user(
             options={
                 "verify_signature": True,
                 "verify_exp": True,
-                "verify_aud": True,
-                "verify_iss": True,
-                "verify_sub": True,
-                "require": ["exp", "aud", "iss", "sub", "iat"]
+                "verify_aud": True,  # Supabase includes this
+                "verify_iss": True,  # Supabase includes this
+                "verify_sub": True,  # Supabase includes this
+                "require": ["exp", "aud", "iss", "sub"]
             },
-            audience="authenticated",
-            issuer="supabase"
+            audience="authenticated",  # Supabase uses this audience
+            issuer=f"{settings.SUPABASE_URL}/auth/v1"  # Supabase uses this issuer
         )
         
         logger.debug(f"JWT payload: {payload}")
         
         # Extract user info from Supabase claims
-        sub = payload.get("sub")  # This is the user's UUID in Supabase
-        email = payload.get("email")
-        
+        sub = payload.get("sub")
         if not sub:
-            # For Supabase tokens, user info might be in different claims
-            sub = payload.get("user_id") or payload.get("uid")
-            if not sub:
-                logger.error("Missing user identifier in JWT payload")
-                raise credentials_exception
+            logger.error("Missing sub claim in JWT payload")
+            raise credentials_exception
             
-            # Get email from user metadata if available
+        # Get email from user metadata if available
+        email = payload.get("email")
+        if not email:
             user_metadata = payload.get("user_metadata", {})
-            email = user_metadata.get("email")
-            if not email:
-                email = f"{sub}@example.com"  # Fallback email if not provided
+            email = user_metadata.get("email") or f"{sub}@example.com"
             
+    except jwt.ExpiredSignatureError:
+        logger.error("Token has expired")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token has expired",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     except jwt.InvalidTokenError as e:
         logger.error(f"JWT validation error: {str(e)}")
         raise credentials_exception
