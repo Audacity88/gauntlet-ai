@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Optional, Dict, Any
-from pydantic import BaseModel, EmailStr, Field, UUID4
+from pydantic import BaseModel, EmailStr, Field, UUID4, ConfigDict
 from enum import Enum
 
 class UserStatus(str, Enum):
@@ -29,8 +29,7 @@ class User(UserBase):
     updated_at: datetime
     last_seen: Optional[datetime] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
     @property
     def display_name(self) -> str:
@@ -63,7 +62,7 @@ async def update_user(supabase_client, user_id: UUID4, update_data: UserUpdate) 
     """Update a user's information using the Supabase client"""
     try:
         response = await supabase_client.from_("profiles")\
-            .update(update_data.dict(exclude_unset=True))\
+            .update(update_data.model_dump(exclude_unset=True))\
             .eq("id", str(user_id))\
             .single()\
             .execute()

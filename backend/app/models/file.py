@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Optional, Dict, Any, List
-from pydantic import BaseModel, UUID4, Field, HttpUrl
+from pydantic import BaseModel, UUID4, Field, HttpUrl, ConfigDict
 from enum import Enum
 
 class FileType(str, Enum):
@@ -23,6 +23,20 @@ class FileMetadata(BaseModel):
     visibility: FileVisibility = FileVisibility.PRIVATE
     additional_metadata: Optional[Dict[str, Any]] = None
 
+    model_config = ConfigDict(
+        extra='allow',
+        json_schema_extra={
+            'example': {
+                'content_type': 'image/jpeg',
+                'size': 1024,
+                'original_name': 'image.jpg',
+                'file_type': 'image',
+                'visibility': 'private',
+                'additional_metadata': {'description': 'My image'}
+            }
+        }
+    )
+
 class FileUploadResponse(BaseModel):
     id: UUID4
     bucket_path: str
@@ -33,9 +47,20 @@ class FileUploadResponse(BaseModel):
     updated_at: Optional[datetime] = None
     deleted_at: Optional[datetime] = None
 
+    model_config = ConfigDict(from_attributes=True)
+
 class FileUpdate(BaseModel):
     visibility: Optional[FileVisibility] = None
     additional_metadata: Optional[Dict[str, Any]] = None
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            'example': {
+                'visibility': 'public',
+                'additional_metadata': {'description': 'Updated description'}
+            }
+        }
+    )
 
 async def upload_file(
     supabase_client,
@@ -64,7 +89,7 @@ async def upload_file(
         file_data = {
             "bucket_path": bucket_path,
             "url": url_response,
-            "metadata": metadata.dict(),
+            "metadata": metadata.model_dump(),
             "uploaded_by": str(user_id),
             "uploaded_at": datetime.utcnow()
         }
@@ -124,7 +149,7 @@ async def update_file(
             return None
             
         # Update metadata
-        new_metadata = current_file.metadata.dict()
+        new_metadata = current_file.metadata.model_dump()
         if update_data.visibility:
             new_metadata["visibility"] = update_data.visibility
         if update_data.additional_metadata:

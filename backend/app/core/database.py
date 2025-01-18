@@ -1,9 +1,10 @@
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Any
 import os
 from supabase import create_client, Client
 from dotenv import load_dotenv
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
-from sqlalchemy.orm import declarative_base
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.ext.declarative import declarative_base
 
 load_dotenv()
 
@@ -50,8 +51,23 @@ except Exception as e:
 postgrest_client = supabase.postgrest.schema("public")
 
 # SQLAlchemy setup
-engine = create_async_engine(database_url)
-async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+engine = create_async_engine(
+    database_url,
+    pool_pre_ping=True,  # Enable connection health checks
+    pool_size=5,  # Set a reasonable pool size
+    max_overflow=10  # Allow up to 10 connections beyond pool_size
+)
+
+# Create session factory
+async_session_factory = sessionmaker(
+    engine,
+    class_=AsyncSession,
+    expire_on_commit=False,
+    autocommit=False,
+    autoflush=False
+)
+
+# Create base class for declarative models
 Base = declarative_base()
 
 async def get_db() -> AsyncGenerator[Client, None]:
@@ -70,8 +86,15 @@ async def get_session() -> AsyncGenerator[AsyncSession, None]:
     Get a database session instance.
     This function returns an async SQLAlchemy session.
     """
-    async with async_session() as session:
+    async with async_session_factory() as session:
         try:
             yield session
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
         finally:
             await session.close()
+
+# Export for type hints
+__all__ = ['Base', 'get_db', 'get_session', 'engine', 'async_session_factory']

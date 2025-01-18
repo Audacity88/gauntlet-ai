@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Optional, Annotated
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from supabase import Client
@@ -12,8 +12,8 @@ from app.models.user import User, UserStatus
 security = HTTPBearer()
 
 async def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
-    db: Client = Depends(get_db)
+    credentials: Annotated[HTTPAuthorizationCredentials, Depends(security)],
+    db: Annotated[Client, Depends(get_db)]
 ) -> User:
     """
     Get the current authenticated user from profiles table.
@@ -30,7 +30,7 @@ async def get_current_user(
                 options={"verify_aud": False}  # Skip audience verification
             )
             print(f"Successfully decoded token: {decoded}")
-        except Exception as e:
+        except jwt.InvalidTokenError as e:
             print(f"Error decoding token: {str(e)}")
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -72,12 +72,18 @@ async def get_current_user(
                     print(f"Profile creation response: {insert_response}")
                     
                     if not insert_response.data:
-                        raise HTTPException(status_code=500, detail="Failed to create user profile")
+                        raise HTTPException(
+                            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
+                            detail="Failed to create user profile"
+                        )
                         
                     user_data = insert_response.data[0]
                 except Exception as e:
                     print(f"Error creating profile: {str(e)}")
-                    raise HTTPException(status_code=500, detail=f"Error creating user profile: {str(e)}")
+                    raise HTTPException(
+                        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
+                        detail=f"Error creating user profile: {str(e)}"
+                    )
             else:
                 user_data = response.data[0]
                 
@@ -107,8 +113,8 @@ async def get_current_user(
         )
 
 async def get_optional_user(
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
-    db: Client = Depends(get_db)
+    credentials: Annotated[Optional[HTTPAuthorizationCredentials], Depends(security)],
+    db: Annotated[Client, Depends(get_db)]
 ) -> Optional[User]:
     """
     Get the current user if authenticated, otherwise return None.
