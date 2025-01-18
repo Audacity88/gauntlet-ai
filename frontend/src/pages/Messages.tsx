@@ -2,34 +2,54 @@ import { useState, useEffect, useCallback } from 'react'
 import { useChannels } from '../hooks/useChannels'
 import { useDirectMessages } from '../hooks/useDirectMessages'
 import { MessageList } from '../components/MessageList'
-import { Channel, User } from '../types/models'
+import { User } from '../types/models'
+import { Channel } from '../types/schema'
 import { useAuth } from '../hooks/useAuth'
 import { useUserCache } from '../hooks/useUserCache'
 import { supabase } from '../lib/supabaseClient'
 import { useStatusStore } from '../stores/statusStore'
 import { UserPresence } from '../components/UserPresence'
 import { UserList } from '../components/UserList'
+import { useMessageCache } from '../hooks/useMessageCache'
 
 type ChatType = 'channel' | 'dm'
 
 interface ChatTarget {
   type: ChatType
-  id: string  // All IDs are now UUIDs
+  id: string
   name: string
 }
+
+// Helper function to safely convert dmChannels to array
+const getDMChannelsArray = (dmChannels: any) => {
+  if (!dmChannels) {
+    return [];
+  }
+  
+  if (dmChannels instanceof Map) {
+    return Array.from(dmChannels.entries());
+  }
+  
+  console.warn('dmChannels is neither null/undefined nor a Map:', typeof dmChannels);
+  return [];
+};
 
 export default function Messages() {
   const [currentChat, setCurrentChat] = useState<ChatTarget | null>(null)
   const { user: currentUser } = useAuth()
   const { getUser } = useUserCache()
   const { getUserProfile } = useStatusStore()
+  const { invalidateChannelMessages } = useMessageCache()
+  
   const { 
     channels, 
-    isLoading: channelsLoading, 
+    loading: channelsLoading, 
     error: channelsError, 
     createChannel,
-    deleteChannel
+    deleteChannel,
+    refresh: refreshChannels
   } = useChannels()
+  
   const {
     conversations: dmChannels,
     loading: dmsLoading,
@@ -38,10 +58,102 @@ export default function Messages() {
     refresh: refreshDirectMessages
   } = useDirectMessages()
 
-  const getOtherUser = useCallback((members: { user: User }[] | undefined) => {
-    if (!currentUser || !members || !Array.isArray(members)) return null
-    return members.find(m => m.user.id !== currentUser.id)?.user
-  }, [currentUser])
+  // Subscribe to real-time updates
+  useEffect(() => {
+    if (!currentUser) return
+
+    // Subscribe to channel changes
+    const channelChanges = supabase
+      .channel('public:channels:' + currentUser.id)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'channels'
+        },
+        async () => {
+          await refreshChannels()
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'channel_members',
+          filter: `user_id=eq.${currentUser.id}`
+        },
+        async () => {
+          await refreshChannels()
+        }
+      )
+      .subscribe()
+
+    // Subscribe to direct message changes
+    const dmChanges = supabase
+      .channel('public:dms:' + currentUser.id)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'direct_messages',
+          filter: `sender_id=eq.${currentUser.id}`,
+        },
+        async () => {
+          await refreshDirectMessages()
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'direct_messages',
+          filter: `receiver_id=eq.${currentUser.id}`,
+        },
+        async () => {
+          await refreshDirectMessages()
+        }
+      )
+      .subscribe()
+
+    // Subscribe to status changes
+    const statusChanges = supabase
+      .channel('public:profiles:' + currentUser.id)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'profiles',
+          filter: `id=eq.${currentUser.id}`
+        },
+        async () => {
+          getUserProfile(currentUser.id)
+        }
+      )
+      .subscribe()
+
+    return () => {
+      channelChanges.unsubscribe()
+      dmChanges.unsubscribe()
+      statusChanges.unsubscribe()
+    }
+  }, [currentUser, refreshChannels, refreshDirectMessages, getUserProfile])
+
+  useEffect(() => {
+    if (currentChat) {
+      invalidateChannelMessages(currentChat.id)
+    }
+  }, [currentChat, invalidateChannelMessages])
+
+  const getOtherUser = useCallback((members: { user_id: string; profile: User }[] | undefined) => {
+    if (!currentUser || !members || !Array.isArray(members)) return null;
+    const otherMember = members.find(m => m.user_id !== currentUser.id);
+    return otherMember?.profile;
+  }, [currentUser]);
 
   const handleCreateChannel = async () => {
     if (!currentUser) {
@@ -51,9 +163,29 @@ export default function Messages() {
     const slug = prompt('Enter channel name:')
     if (slug) {
       try {
-        await createChannel({ slug })
+        const channel = await createChannel({ slug })
+        
+        if (channel) {
+          // Add creator as channel member
+          const { error: memberError } = await supabase
+            .from('channel_members')
+            .insert({
+              channel_id: channel.id,
+              user_id: currentUser.id,
+              profile_id: currentUser.id
+            })
+
+          if (memberError) {
+            // Continue anyway as the channel was created
+          }
+
+          setCurrentChat({
+            type: 'channel',
+            id: channel.id,
+            name: channel.slug
+          })
+        }
       } catch (err) {
-        console.error('Failed to create channel:', err)
         alert('Failed to create channel')
       }
     }
@@ -67,13 +199,16 @@ export default function Messages() {
     
     try {
       const channelId = await createDirectMessage(selectedUser.username)
+      
+      // Set the display name consistently using full name first
+      const displayName = selectedUser.full_name || selectedUser.username || 'Unknown User';
+      
       setCurrentChat({
         type: 'dm',
         id: channelId,
-        name: selectedUser.username || selectedUser.full_name || 'Unknown User'
+        name: displayName
       })
     } catch (err) {
-      console.error('Failed to create DM:', err)
       alert(err instanceof Error ? err.message : 'Failed to create direct message')
     }
   }
@@ -83,6 +218,15 @@ export default function Messages() {
       alert('Please sign in to delete channels')
       return
     }
+
+    // Check if channel exists in current list
+    const channel = Array.from(channels.values()).find(ch => ch.id === channelId)
+
+    if (!channel) {
+      alert('Channel not found. The page may be out of date - please refresh.')
+      return
+    }
+
     if (confirm('Are you sure you want to delete this channel?')) {
       try {
         await deleteChannel(channelId)
@@ -90,162 +234,209 @@ export default function Messages() {
           setCurrentChat(null)
         }
       } catch (err) {
-        console.error('Failed to delete channel:', err)
         alert('Failed to delete channel')
       }
     }
   }
 
-  const handleChannelClick = async (channel: Channel) => {
-    if (!currentUser) {
-      alert('Please sign in to view channels')
-      return
-    }
+  const handleChannelClick = useCallback(async (channel: Channel) => {
+    if (!currentUser) return
 
     try {
       // Check if user is already a member
-      const { data: existingMembership, error: membershipError } = await supabase
+      const { data: memberData, error: memberError } = await supabase
         .from('channel_members')
-        .select('id')
+        .select('*')
         .eq('channel_id', channel.id)
         .eq('user_id', currentUser.id)
-        .single()
+        .maybeSingle()
 
-      if (membershipError && !existingMembership) {
-        // User is not a member, try to join the channel
+      if (memberError) {
+        console.error('Error checking channel membership:', memberError)
+        alert('Error joining channel. Please try again.')
+        return
+      }
+
+      // If not a member, join the channel
+      if (!memberData) {
         const { error: joinError } = await supabase
           .from('channel_members')
           .insert({
             channel_id: channel.id,
             user_id: currentUser.id,
-            profile_id: currentUser.id,
-            role: 'member'
+            profile_id: currentUser.id
           })
 
         if (joinError) {
-          console.error('Failed to join channel:', joinError)
-          alert('Failed to join channel')
+          console.error('Error joining channel:', joinError)
+          alert('Error joining channel. Please try again.')
           return
         }
       }
 
+      // Set as current chat
       setCurrentChat({
         type: 'channel',
         id: channel.id,
         name: channel.slug
       })
-    } catch (err) {
-      console.error('Error accessing channel:', err)
-      alert('Error accessing channel')
+    } catch (error) {
+      console.error('Error joining channel:', error)
+      alert('Error joining channel. Please try again.')
     }
-  }
+  }, [currentUser, setCurrentChat])
 
   return (
     <div className="flex h-full">
       {/* Channels List */}
-      <div className="w-64 bg-gray-50 border-r p-4">
-        {/* Channels Section */}
-        <div className="mb-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-bold text-black">Channels</h2>
-            <button
-              onClick={handleCreateChannel}
-              className="px-3 py-1 bg-indigo-600 text-white rounded hover:bg-indigo-700"
-            >
-              + New
-            </button>
-          </div>
-
-          {channelsLoading ? (
-            <div className="text-black">Loading channels...</div>
-          ) : channelsError ? (
-            <div className="text-red-500">Error: {channelsError.message}</div>
-          ) : (
-            <div className="space-y-2">
-              {Array.from(channels.values()).map(channel => (
-                <div 
-                  key={channel.id}
-                  className="flex items-center justify-between group"
-                >
+      <div className="w-64 bg-gray-50 border-r flex flex-col overflow-hidden">
+        {/* Scrollable sections container */}
+        <div className="flex-1 overflow-y-auto">
+          {/* Channels Section */}
+          <div className="p-4">
+            <div className="mb-6">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-bold text-black">Channels</h2>
+                <div className="flex items-center space-x-2">
                   <button
-                    onClick={() => handleChannelClick(channel)}
-                    className={`flex-1 text-left px-2 py-1 rounded text-black bg-indigo-50 hover:bg-indigo-100 ${
-                      currentChat?.id === channel.id
-                        ? 'bg-indigo-100'
-                        : ''
-                    }`}
+                    onClick={() => refreshChannels()}
+                    className="p-1.5 bg-indigo-600 text-white rounded hover:bg-indigo-700"
+                    aria-label="Reload channels"
                   >
-                    # {channel.slug}
-                  </button>
-                  {currentUser && channel.created_by === currentUser.id && (
-                    <button
-                      onClick={() => handleDeleteChannel(channel.id)}
-                      className="hidden group-hover:block px-2 py-1 text-red-500 hover:text-red-700 bg-indigo-50 hover:bg-indigo-100 rounded-r"
+                    <svg
+                      className="w-5 h-5"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                      xmlns="http://www.w3.org/2000/svg"
                     >
-                      ×
-                    </button>
-                  )}
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                      />
+                    </svg>
+                  </button>
+                  <button
+                    onClick={handleCreateChannel}
+                    className="px-3 py-1 bg-indigo-600 text-white rounded hover:bg-indigo-700"
+                  >
+                    + New
+                  </button>
                 </div>
-              ))}
-            </div>
-          )}
-        </div>
+              </div>
 
-        {/* Direct Messages Section */}
-        <div>
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-bold text-black">Direct Messages</h2>
-          </div>
-
-          {dmsLoading ? (
-            <div className="text-black">Loading messages...</div>
-          ) : dmsError ? (
-            <div className="text-red-500">Error: {dmsError.message}</div>
-          ) : !dmChannels || dmChannels.size === 0 ? (
-            <div className="text-gray-500">No direct messages yet</div>
-          ) : (
-            <div className="space-y-2">
-              {Array.from(dmChannels.values())
-                .filter(dm => dm && dm.id && dm.members) // Filter out invalid DMs
-                .map(dm => {
-                  const otherUser = getOtherUser(dm.members)
-                  const displayName = otherUser?.username || 'Unknown User'
-                  
-                  return (
+              {channelsLoading ? (
+                <div className="text-black">Loading channels...</div>
+              ) : channelsError ? (
+                <div className="text-red-500">Error: {channelsError.message}</div>
+              ) : (
+                <div className="space-y-2 max-h-[250px] overflow-y-auto scrollbar-none hover:scrollbar-thin scrollbar-track-transparent scrollbar-thumb-indigo-600/40 hover:scrollbar-thumb-indigo-600/60 [&::-webkit-scrollbar-thumb]:rounded [&::-webkit-scrollbar-thumb]:min-h-[40px]">
+                  {Array.from(channels.values()).map(channel => (
                     <button
-                      key={dm.id}
-                      onClick={() => setCurrentChat({
-                        type: 'dm',
-                        id: dm.id,
-                        name: displayName
-                      })}
-                      className={`w-full text-left px-2 py-1 rounded text-black bg-indigo-50 hover:bg-indigo-100 ${
-                        currentChat?.id === dm.id
-                          ? 'bg-indigo-100'
-                          : ''
+                      key={channel.id}
+                      onClick={() => handleChannelClick(channel)}
+                      className={`w-full text-left px-2 py-1 rounded text-black bg-indigo-50 hover:bg-indigo-100 group ${
+                        currentChat?.id === channel.id ? 'bg-indigo-100' : ''
                       }`}
                     >
                       <div className="flex items-center justify-between">
-                        <div className="flex items-center space-x-2">
-                          <span className="text-black">{displayName}</span>
-                          {otherUser && <UserPresence userId={otherUser.id} size="sm" />}
-                        </div>
+                        <span># {channel.slug}</span>
+                        {currentUser && channel.created_by === currentUser.id && (
+                          <span
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteChannel(channel.id);
+                            }}
+                            className="hidden group-hover:block text-red-500 hover:text-red-700"
+                          >
+                            ×
+                          </span>
+                        )}
                       </div>
                     </button>
-                  )
-                })}
+                  ))}
+                </div>
+              )}
             </div>
-          )}
-        </div>
 
-        {/* User List Section */}
-        <div className="mt-6">
-          <h2 className="text-lg font-bold text-black mb-4">All Users</h2>
-          <UserList
-            onUserSelect={handleCreateDM}
-            showPresence={true}
-            filter="all"
-          />
+            {/* Direct Messages Section */}
+            <div className="mb-6">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-bold text-black">Direct Messages</h2>
+              </div>
+
+              {dmsLoading ? (
+                <div className="text-black">Loading messages...</div>
+              ) : dmsError ? (
+                <div className="text-red-500">Error: {dmsError.message}</div>
+              ) : !dmChannels || dmChannels.size === 0 ? (
+                <div className="text-gray-500">No direct messages yet</div>
+              ) : (
+                <div className="space-y-2 max-h-[120px] overflow-y-auto scrollbar-none hover:scrollbar-thin scrollbar-track-transparent scrollbar-thumb-indigo-600/40 hover:scrollbar-thumb-indigo-600/60 [&::-webkit-scrollbar-thumb]:rounded [&::-webkit-scrollbar-thumb]:min-h-[40px]">
+                  {(() => {
+                    return getDMChannelsArray(dmChannels)
+                      .filter(([_, dm]) => {
+                        const isValid = dm && dm.channelId && dm.members;
+                        if (!isValid) {
+                          console.log('Filtered out DM:', {
+                            hasData: Boolean(dm),
+                            hasChannelId: Boolean(dm?.channelId),
+                            hasMembers: Boolean(dm?.members)
+                          });
+                        }
+                        return isValid;
+                      })
+                      .map(([userId, dm]) => {
+                        const otherMember = dm.members.find((m: { user_id: string; profile: User }) => {
+                          const isCurrentUser = m.profile.username === currentUser?.email;
+                          return !isCurrentUser;
+                        });
+                        
+                        const otherUserProfile = otherMember?.profile;
+                        const displayName = otherUserProfile?.full_name || otherUserProfile?.username || 'Unknown User';
+                        
+                        return (
+                          <button
+                            key={dm.channelId}
+                            onClick={() => setCurrentChat({
+                              type: 'dm',
+                              id: dm.channelId,
+                              name: displayName
+                            })}
+                            className={`w-full text-left px-2 py-1 rounded text-black bg-indigo-50 hover:bg-indigo-100 ${
+                              currentChat?.id === dm.channelId
+                                ? 'bg-indigo-100'
+                                : ''
+                            }`}
+                          >
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center space-x-2">
+                                <span className="text-black">{displayName}</span>
+                                {otherUserProfile && <UserPresence userId={otherUserProfile.id} size="sm" />}
+                              </div>
+                            </div>
+                          </button>
+                        );
+                      });
+                  })()}
+                </div>
+              )}
+            </div>
+
+            {/* User List Section */}
+            <div>
+              <h2 className="text-lg font-bold text-black mb-4">All Users</h2>
+              <div className="max-h-[330px] overflow-y-auto scrollbar-none hover:scrollbar-thin scrollbar-track-transparent scrollbar-thumb-indigo-600/40 hover:scrollbar-thumb-indigo-600/60 [&::-webkit-scrollbar-thumb]:rounded [&::-webkit-scrollbar-thumb]:min-h-[40px]">
+                <UserList
+                  onUserSelect={handleCreateDM}
+                  showPresence={true}
+                  filter="all"
+                />
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 

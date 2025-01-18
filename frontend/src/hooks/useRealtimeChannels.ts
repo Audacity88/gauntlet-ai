@@ -128,15 +128,18 @@ export function useRealtimeChannels({ type }: UseRealtimeChannelsProps = {}) {
         {
           event: '*',
           schema: 'public',
-          table: 'channels'
+          table: 'channels',
+          broadcast: { self: true }
         },
         (payload) => {
           if (!isSubscribed) return;
 
           try {
             if (payload.eventType === 'INSERT' && !channelProcessor.hasProcessed(payload.new.id)) {
+              console.log('New channel detected:', payload.new);
               processChannel(payload.new as Channel);
             } else if (payload.eventType === 'UPDATE') {
+              console.log('Channel update detected:', payload.new);
               const processed = channelProcessor.processChannel({
                 ...payload.new as Channel,
                 eventType: 'UPDATE'
@@ -145,11 +148,54 @@ export function useRealtimeChannels({ type }: UseRealtimeChannelsProps = {}) {
                 updateChannel(processed.id, processed);
               }
             } else if (payload.eventType === 'DELETE') {
+              console.log('Channel deletion detected:', payload.old);
               removeChannel(payload.old.id);
             }
           } catch (err) {
             console.error('Error processing channel change:', err);
             setError(err instanceof Error ? err : new Error('Failed to process channel change'));
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'channel_members',
+          filter: `user_id=eq.${user.id}`,
+          broadcast: { self: true }
+        },
+        async (payload) => {
+          if (!isSubscribed) return;
+
+          try {
+            if (payload.eventType === 'INSERT') {
+              console.log('New channel membership detected:', payload.new);
+              // Fetch the full channel data when added as a member
+              const { data: channelData, error } = await supabase
+                .from('channels')
+                .select(`
+                  *,
+                  creator:profiles!channels_created_by_fkey(*)
+                `)
+                .eq('id', payload.new.channel_id)
+                .single();
+
+              if (!error && channelData) {
+                const processed = channelProcessor.processChannel(channelData);
+                if (processed) {
+                  addChannel(processed);
+                }
+              }
+            } else if (payload.eventType === 'DELETE') {
+              console.log('Channel membership removed:', payload.old);
+              // Remove channel when removed as a member
+              removeChannel(payload.old.channel_id);
+            }
+          } catch (err) {
+            console.error('Error processing channel member change:', err);
+            setError(err instanceof Error ? err : new Error('Failed to process channel member change'));
           }
         }
       )

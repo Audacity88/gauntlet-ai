@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { supabase } from '../lib/supabaseClient'
-import { DirectMessage, User } from '../types/models'
+import { User } from '../types/models'
 import { useAuth } from '../hooks/useAuth'
 import { useDirectMessageStore } from '../stores/directMessageStore'
 import { getDirectMessageProcessor, DirectMessageWithDetails } from '../utils/DirectMessageProcessor'
@@ -50,20 +50,20 @@ export function useDirectMessages() {
           if (!processor) return
 
           if (payload.eventType === 'INSERT') {
-            const processed = processor.processDirectMessage(payload.new as DirectMessage)
+            const processed = processor.processDirectMessage(payload.new)
             if (processed) {
-              addMessage(processed)
+              addMessage(processed.channelId, processed)
             }
           } else if (payload.eventType === 'UPDATE') {
             const processed = processor.processDirectMessage({
-              ...payload.new as DirectMessage,
+              ...payload.new,
               eventType: 'UPDATE'
             })
             if (processed) {
-              updateMessage(processed.id, processed)
+              updateMessage(processed.channelId, processed.id, processed)
             }
           } else if (payload.eventType === 'DELETE') {
-            removeMessage(payload.old.id)
+            removeMessage(payload.old.channel_id, payload.old.id)
           }
         }
       )
@@ -76,15 +76,23 @@ export function useDirectMessages() {
 
   const loadChannels = async () => {
     try {
-      setLoading(true)
-      setError(null)
+      setLoading(true);
+      setError(null);
 
       if (!user) {
-        setConversationMessages(new Map())
-        return
+        console.log('No user found, clearing conversations');
+        setConversationMessages(new Map());
+        return;
       }
 
       // Get all DM channels with their members
+      const { data: userChannels } = await supabase
+        .from('direct_message_members')
+        .select('channel_id')
+        .eq('user_id', user.id);
+
+      const channelIds = userChannels?.map(uc => uc.channel_id) || [];
+
       const { data: channels, error: channelsError } = await supabase
         .from('direct_message_channels')
         .select(`
@@ -96,16 +104,33 @@ export function useDirectMessages() {
             user_id,
             profile_id,
             last_read_at,
-            username,
-            full_name,
-            avatar_url
+            profile:profiles!direct_message_members_profile_id_fkey(
+              id,
+              username,
+              full_name,
+              avatar_url
+            )
           )
         `)
         .order('updated_at', { ascending: false })
+        .in('id', channelIds);
+
+      console.log('Fetched DM channels:', {
+        channelsCount: channels?.length || 0,
+        channelIds,
+        error: channelsError?.message,
+        firstChannelMembers: channels?.[0]?.members
+      });
 
       if (channelsError) {
-        console.error('Failed to load DM channels:', channelsError)
-        throw channelsError
+        console.error('Failed to load DM channels:', channelsError);
+        throw channelsError;
+      }
+
+      if (!channels || channels.length === 0) {
+        console.log('No channels found, clearing conversations');
+        setConversationMessages(new Map());
+        return;
       }
 
       // Get messages for each channel
@@ -119,147 +144,184 @@ export function useDirectMessages() {
           content,
           created_at,
           updated_at,
-          attachments
+          profile:profiles!direct_messages_profile_id_fkey(
+            id,
+            username,
+            full_name,
+            avatar_url
+          )
         `)
-        .order('created_at', { ascending: false })
+        .in('channel_id', channels.map(c => c.id))
+        .order('created_at', { ascending: true });
+
+      console.log('Fetched messages:', {
+        messagesCount: messages?.length || 0,
+        error: messagesError?.message
+      });
 
       if (messagesError) {
-        console.error('Failed to load DM messages:', messagesError)
-        throw messagesError
+        console.error('Failed to load messages:', messagesError);
+        throw messagesError;
       }
 
       // Process and group messages by channel
-      const channelMap = new Map()
+      const channelMap = new Map();
       channels.forEach(channel => {
-        const members = channel.members || []
-        const otherMember = members.find(m => m.user_id !== user.id)
-        if (otherMember) {
-          channelMap.set(channel.id, {
-            id: channel.id,
-            members: members.map(m => ({ 
-              user: {
-                id: m.user_id,
-                username: m.username,
-                full_name: m.full_name,
-                avatar_url: m.avatar_url
-              },
-              last_read_at: m.last_read_at 
-            })),
-            otherUser: {
-              id: otherMember.user_id,
-              username: otherMember.username,
-              full_name: otherMember.full_name,
-              avatar_url: otherMember.avatar_url
-            },
-            messages: messages
-              .filter(m => m.channel_id === channel.id)
-              .map(m => {
-                const memberInfo = members.find(member => member.user_id === m.user_id)
-                return {
-                  ...m,
-                  user: memberInfo ? {
-                    id: memberInfo.user_id,
-                    username: memberInfo.username,
-                    full_name: memberInfo.full_name,
-                    avatar_url: memberInfo.avatar_url
-                  } : null
-                }
-              }),
-            last_read_at: members.find(m => m.user_id === user.id)?.last_read_at,
-            created_at: channel.created_at,
-            updated_at: channel.updated_at
-          })
-        }
-      })
+        // Find the other member (not the current user)
+        const otherMember = channel.members.find(m => {
+          const isOtherUser = m.user_id !== user.id;
+          const memberProfile = m.profile;
+          // console.log('Checking member:', {
+          //   memberId: m.user_id,
+          //   isCurrentUser: m.user_id === user.id,
+          //   username: memberProfile?.username,
+          //   fullName: memberProfile?.full_name
+          // });
+          return isOtherUser;
+        });
 
-      setConversationMessages(channelMap)
+        if (!otherMember?.profile) {
+          console.log('No other member or profile found for channel:', channel.id);
+          return;
+        }
+
+        const otherUserProfile = {
+          id: otherMember.user_id,
+          username: otherMember.profile.username,
+          full_name: otherMember.profile.full_name,
+          avatar_url: otherMember.profile.avatar_url
+        };
+
+        // console.log('Found other member:', {
+        //   channelId: channel.id,
+        //   otherMemberId: otherMember.user_id,
+        //   username: otherUserProfile.username,
+        //   fullName: otherUserProfile.full_name
+        // });
+
+        const channelMessages = messages
+          ? messages.filter(m => m.channel_id === channel.id).map(m => ({
+              ...m,
+              sender: m.profile,
+              receiver: m.user_id === user.id ? otherUserProfile : m.profile
+            }))
+          : [];
+
+        // Store the channel with the other user's profile
+        channelMap.set(otherMember.user_id, {
+          messages: channelMessages,
+          otherUserId: otherMember.user_id,
+          otherUserProfile,
+          channelId: channel.id,
+          members: channel.members.map(m => ({
+            user_id: m.user_id,
+            profile: {
+              id: m.user_id,
+              username: m.profile.username,
+              full_name: m.profile.full_name,
+              avatar_url: m.profile.avatar_url
+            }
+          }))
+        });
+      });
+
+      console.log('Processed channels:', {
+        channelMapSize: channelMap.size,
+        channelIds: Array.from(channelMap.values()).map(c => c.channelId),
+        channels: Array.from(channelMap.values()).map(c => ({
+          channelId: c.channelId,
+          otherUser: {
+            username: c.otherUserProfile.username,
+            fullName: c.otherUserProfile.full_name
+          }
+        }))
+      });
+
+      // Set the conversations map directly
+      setConversationMessages(channelMap);
 
     } catch (err) {
-      console.error('Failed to load DM channels:', err)
-      setError(err instanceof Error ? err : new Error('Failed to load DM channels'))
+      console.error('Failed to load DM channels:', err);
+      setError(err instanceof Error ? err : new Error('Failed to load DM channels'));
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   const createDirectMessage = async (otherUsername: string) => {
     try {
-      if (!user) throw new Error('No authenticated user')
+      if (!user) throw new Error('No authenticated user');
+
+      // Get current user's profile first
+      const { data: currentProfile, error: profileError } = await supabase
+        .from('profiles')
+        .select('id, username')
+        .eq('id', user.id)
+        .single();
+
+      console.log('Current user profile:', { userId: user.id, currentProfile, profileError });
+
+      if (profileError || !currentProfile) {
+        throw new Error(profileError?.message || 'Could not fetch current user profile');
+      }
+
+      // Prevent self-DMs
+      if (otherUsername === currentProfile.username) {
+        throw new Error('Cannot create a direct message channel with yourself');
+      }
 
       // Get the other user's profile from their username
       const { data: otherProfile, error: userError } = await supabase
         .from('profiles')
         .select('id, username, full_name')
         .eq('username', otherUsername)
-        .not('id', 'eq', user.id)
-        .single()
+        .single();
+
+      console.log('Other user profile:', { otherUsername, otherProfile, userError });
 
       if (userError || !otherProfile) {
-        throw new Error(userError?.message || `User "${otherUsername}" not found`)
+        throw new Error(userError?.message || `User "${otherUsername}" not found`);
       }
 
-      // First check if a DM channel already exists between these users
-      const { data: existingChannel, error: existingError } = await supabase
-        .from('direct_message_channels')
-        .select(`
-          id,
-          members:direct_message_members(user_id)
-        `)
-        .contains('members', [{ user_id: user.id }, { user_id: otherProfile.id }])
-        .single()
-
-      if (!existingError && existingChannel) {
-        return existingChannel.id
+      // Double-check to prevent self-DMs (in case of case-sensitivity issues)
+      if (currentProfile.id === otherProfile.id) {
+        throw new Error('Cannot create a direct message channel with yourself');
       }
 
-      // If no channel exists, create one
-      const { data: newChannel, error: channelError } = await supabase
-        .from('direct_message_channels')
-        .insert({})
-        .select('id')
-        .single()
+      console.log('Creating DM channel between users:', {
+        currentUser: { id: user.id, profile: currentProfile },
+        otherUser: { id: otherProfile.id, profile: otherProfile }
+      });
 
-      if (channelError) {
-        console.error('Channel creation error:', channelError)
-        throw new Error('Failed to create DM channel')
+      // Create a new channel using RPC function
+      const { data: newChannel, error: createError } = await supabase
+        .rpc('find_or_create_dm_channel', {
+          p_user_id: user.id,
+          p_other_user_id: otherProfile.id
+        });
+
+      console.log('RPC result:', { newChannel, createError });
+
+      if (createError) {
+        throw new Error(`Error creating DM channel: ${createError.message}`);
       }
 
-      // Add both users as members
-      const { error: membersError } = await supabase
-        .from('direct_message_members')
-        .insert([
-          {
-            channel_id: newChannel.id,
-            user_id: user.id,
-            profile_id: user.id
-          },
-          {
-            channel_id: newChannel.id,
-            user_id: otherProfile.id,
-            profile_id: otherProfile.id
-          }
-        ])
+      // Refresh the channels list
+      await loadChannels();
 
-      if (membersError) {
-        console.error('Member creation error:', membersError)
-        throw new Error('Failed to add users to DM channel')
-      }
+      return newChannel.channel_id;
 
-      // Refresh channels to include the new one
-      await loadChannels()
-
-      return newChannel.id
-    } catch (err) {
-      console.error('Failed to create direct message:', err)
-      throw err instanceof Error ? err : new Error('Failed to create direct message')
+    } catch (error) {
+      console.error('Error in createDirectMessage:', error);
+      throw error;
     }
-  }
+  };
 
   return {
     conversations,
     loading,
     error,
-    createDirectMessage,
-    refresh: loadChannels
+    refresh: loadChannels,
+    createDirectMessage
   }
 } 

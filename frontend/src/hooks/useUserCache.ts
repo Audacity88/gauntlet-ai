@@ -114,12 +114,12 @@ export const useUserCache = (): UseUserCacheResult => {
     try {
       const { error } = await supabase
         .from('profiles')
-        .update({ status })
+        .update({ status: status.toLowerCase() })
         .eq('id', userId);
 
       if (error) throw error;
 
-      // Update the cache
+      // Update the cache with the uppercase status
       const user = cacheIntegration.getUser(userId);
       if (user) {
         cacheIntegration.setUser(userId, { ...user, status });

@@ -10,12 +10,28 @@ DROP TABLE IF EXISTS public.direct_message_members CASCADE;
 -- Create profiles table
 CREATE TABLE public.profiles (
     id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
-    username TEXT UNIQUE,
+    username TEXT UNIQUE NOT NULL,
     full_name TEXT,
     avatar_url TEXT,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    status TEXT DEFAULT 'offline' CHECK (status IN ('online', 'offline', 'away', 'busy')),
+    last_seen TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Enable RLS on profiles
+ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+
+-- Create policies for profiles
+DROP POLICY IF EXISTS "Users can view all profiles" ON public.profiles;
+CREATE POLICY "Users can view all profiles" ON public.profiles
+  FOR SELECT USING (true);
+
+CREATE POLICY "Users can update own profile" ON public.profiles
+  FOR UPDATE USING (auth.uid() = id);
+
+CREATE POLICY "Users can insert own profile" ON public.profiles
+  FOR INSERT WITH CHECK (auth.uid() = id);
 
 -- Create channels table
 CREATE TABLE public.channels (
@@ -23,7 +39,7 @@ CREATE TABLE public.channels (
     slug TEXT NOT NULL,
     created_by UUID NOT NULL,
     inserted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CONSTRAINT channels_created_by_fkey FOREIGN KEY (created_by) REFERENCES auth.users(id) ON DELETE CASCADE
+    CONSTRAINT channels_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.profiles(id) ON DELETE CASCADE
 );
 
 -- Create channel_members table
@@ -98,8 +114,6 @@ ALTER TABLE public.channels ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.channel_members ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.messages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.direct_messages ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.direct_message_channels ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.direct_message_members ENABLE ROW LEVEL SECURITY;
 
 -- Create policies for channels
 CREATE POLICY "Users can view channels" ON public.channels
@@ -139,29 +153,73 @@ CREATE POLICY "Users can update their own messages" ON public.messages
 CREATE POLICY "Users can delete their own messages" ON public.messages
   FOR DELETE USING (auth.uid()::text = user_id::text);
 
--- Enable RLS on profiles
-ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+-- Enable RLS on auth.users
+ALTER TABLE auth.users ENABLE ROW LEVEL SECURITY;
 
--- Create policies for profiles
-CREATE POLICY "Users can view all profiles" ON public.profiles
-  FOR SELECT USING (true);
+-- Create policy for service role to access auth.users
+DROP POLICY IF EXISTS "Service role can access users" ON auth.users;
+CREATE POLICY "Service role can access users" ON auth.users
+    FOR ALL TO service_role
+    USING (true)
+    WITH CHECK (true);
 
-CREATE POLICY "Users can update their own profile" ON public.profiles
-  FOR UPDATE USING (auth.uid()::text = id::text);
+-- Create function to sync existing users
+CREATE OR REPLACE FUNCTION public.sync_existing_users()
+RETURNS void AS $$
+BEGIN
+  INSERT INTO public.profiles (
+    id,
+    username,
+    full_name,
+    status,
+    created_at,
+    updated_at
+  )
+  SELECT 
+    users.id,
+    COALESCE(users.raw_user_meta_data->>'username', users.email),
+    COALESCE(users.raw_user_meta_data->>'full_name', split_part(users.email, '@', 1)),
+    'offline',
+    users.created_at,
+    users.updated_at
+  FROM auth.users
+  LEFT JOIN public.profiles ON users.id = profiles.id
+  WHERE profiles.id IS NULL;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- Create a trigger to create a profile for each new user
+-- Create function to handle new user creation
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
 BEGIN
-  INSERT INTO public.profiles (id, username, full_name)
-  VALUES (
-    new.id,
-    new.email,
-    COALESCE(new.raw_user_meta_data->>'full_name', new.email)
+  INSERT INTO public.profiles (
+    id,
+    username,
+    full_name,
+    status,
+    created_at,
+    updated_at
+  ) VALUES (
+    NEW.id,
+    COALESCE(NEW.raw_user_meta_data->>'username', NEW.email),
+    COALESCE(NEW.raw_user_meta_data->>'full_name', split_part(NEW.email, '@', 1)),
+    'offline',
+    NEW.created_at,
+    NEW.updated_at
   );
-  RETURN new;
+  RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Create the trigger on auth.users
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW
+  EXECUTE FUNCTION public.handle_new_user();
+
+-- Run sync for any existing users without profiles
+SELECT sync_existing_users();
 
 -- Create policies for direct messages
 CREATE POLICY "Users can view direct messages they are members of" ON public.direct_messages
@@ -204,4 +262,12 @@ CREATE POLICY "Users can view DM members" ON public.direct_message_members
     );
 
 CREATE POLICY "Users can join DM channels" ON public.direct_message_members
-    FOR INSERT WITH CHECK (auth.uid()::text = user_id::text); 
+    FOR INSERT WITH CHECK (auth.uid()::text = user_id::text);
+
+-- Update existing status values to lowercase
+UPDATE public.profiles SET status = LOWER(status);
+
+-- Remove duplicate constraint since it's already defined in the table creation
+-- ALTER TABLE public.profiles ADD CONSTRAINT profiles_status_check 
+--    CHECK (status IN ('online', 'offline', 'away', 'busy'));
+ 

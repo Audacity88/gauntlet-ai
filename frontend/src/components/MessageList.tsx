@@ -15,19 +15,28 @@ interface MessageError {
   retry?: () => Promise<void>;
 }
 
-interface MessageListProps {
+export interface MessageListProps {
   channelId: string;
-  chatType?: 'channel' | 'dm';
-  chatName?: string;
-  markChannelAsRead?: (channelId: string) => Promise<void>;
+  chatType: 'dm';
+  chatName: string;
+  onSendMessage: (content: string) => Promise<void>;
+  messages?: MessageWithUser[];
 }
 
-const MessageListContent = memo(function MessageListContent({
-  channelId,
-  chatType = 'channel',
-  chatName,
-  markChannelAsRead
-}: MessageListProps) {
+export const MessageList = memo(function MessageList({ channelId, chatType, chatName, onSendMessage, messages: propMessages }: MessageListProps) {
+  const {
+    messages: hookMessages,
+    isLoading,
+    error,
+    sendMessage
+  } = useRealtimeMessages({
+    channelId,
+    chatType
+  });
+
+  // Use provided messages if available, otherwise use messages from hook
+  const messages = propMessages || hookMessages;
+
   const [searchQuery, setSearchQuery] = useState('');
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState<MessageError | null>(null);
@@ -39,30 +48,32 @@ const MessageListContent = memo(function MessageListContent({
   const { user } = useAuth();
   const { uploadFile } = useFileUpload();
 
-  const {
-    messages,
-    isLoading,
-    error: messagesError,
-    hasMore,
-    sendMessage
-  } = useRealtimeMessages({ channelId, chatType, searchQuery });
-
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   // Scroll to bottom function
   const scrollToBottom = () => {
-    if (messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
     }
   };
 
-  // Scroll to bottom on new messages
+  // Only scroll to bottom when new messages arrive, not when loading historical messages
   useEffect(() => {
-    if (!searchQuery) {
-      scrollToBottom();
+    // Only scroll if:
+    // 1. Not searching
+    // 2. Messages have loaded
+    // 3. The last message is from the current user OR it's a new message (not part of initial load)
+    if (!searchQuery && !isLoading && messages.length > 0) {
+      const lastMessage = messages[messages.length - 1];
+      const isNewMessage = lastMessage.id.startsWith('temp-') || 
+                          new Date(lastMessage.created_at).getTime() > new Date().getTime() - 1000;
+      
+      if (lastMessage.user_id === user?.id || isNewMessage) {
+        scrollToBottom();
+      }
     }
-  }, [messages.length, searchQuery]);
+  }, [messages.length, searchQuery, isLoading, user?.id]);
 
   // Handle search
   const handleSearch = useCallback((query: string) => {
@@ -104,7 +115,11 @@ const MessageListContent = memo(function MessageListContent({
         };
         
         try {
-          await sendMessage(content || ' ', uploadResult.url, fileMetadata);
+          if (onSendMessage) {
+            await onSendMessage(content || ' ');
+          } else {
+            await sendMessage(content || ' ', uploadResult.url, fileMetadata);
+          }
           setSelectedFile(null);
         } catch (sendErr) {
           console.error('Send error:', sendErr);
@@ -117,7 +132,11 @@ const MessageListContent = memo(function MessageListContent({
           });
         }
       } else if (content.trim()) {
-        await sendMessage(content);
+        if (onSendMessage) {
+          await onSendMessage(content);
+        } else {
+          await sendMessage(content);
+        }
       }
     } catch (err) {
       console.error('General error:', err);
@@ -149,14 +168,14 @@ const MessageListContent = memo(function MessageListContent({
   };
 
   // Show error states
-  if (messagesError) {
-    const isAccessError = messagesError.message === 'Not a member of this channel';
+  if (error) {
+    const isAccessError = error.message === 'Not a member of this channel';
     return (
       <div className="flex flex-col items-center justify-center h-full p-4 text-center">
         <div className="text-red-500 mb-4" role="alert">
           {isAccessError
             ? 'You are not a member of this channel. Please join the channel to view messages.'
-            : `Error loading messages: ${messagesError.message}`}
+            : `Error loading messages: ${error.message}`}
         </div>
         {!isAccessError && (
           <button
@@ -189,78 +208,6 @@ const MessageListContent = memo(function MessageListContent({
   }
 
   return (
-    <div className="flex h-full">
-      {/* Main area: messages + input */}
-      <div className="flex-1 flex flex-col">
-        {/* Search bar */}
-        <div className="p-4 border-b flex items-center justify-between">
-          <h1 className="text-lg font-semibold text-black">
-            {chatType === 'channel' ? '#' : ''} {chatName}
-          </h1>
-          <SearchBar onSearch={handleSearch} placeholder="Search messages..." />
-        </div>
-
-        <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-4 space-y-4">
-          {/* Load more messages indicator, etc. (optional) */}
-
-          {/* No results message when searching */}
-          {searchQuery && messages.length === 0 && !isLoading && (
-            <div className="flex flex-col items-center justify-center py-8 text-gray-500">
-              <p>No messages found matching "{searchQuery}"</p>
-            </div>
-          )}
-
-          {/* Message list */}
-          {messages.map((message) => (
-            <MessageBubble
-              key={`${channelId}-${message.id}`}
-              message={{
-                ...message,
-                profile: message.user,
-                profile_id: message.user_id
-              }}
-              isOptimistic={message.id.startsWith('temp-')}
-              onOpenThread={(m) => openThread(m as MessageWithUser)}
-            />
-          ))}
-
-          <div ref={messagesEndRef} />
-        </div>
-
-        {/* Input Area */}
-        <div className="p-4 border-t">
-          <MessageInput
-            onSubmit={handleSendMessage}
-            onFileSelect={handleFileSelect}
-            selectedFile={selectedFile}
-            isUploading={isUploading}
-          />
-          {uploadError && (
-            <div className="text-sm text-red-500 flex items-center justify-between" role="alert">
-              <span>{uploadError.message}</span>
-              {uploadError.retry && (
-                <button
-                  onClick={uploadError.retry}
-                  className="text-red-600 hover:text-red-700 font-medium"
-                >
-                  Retry Upload
-                </button>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Optional side panel for threads */}
-      {threadParent && (
-        <ThreadView parentMessage={threadParent} onClose={closeThread} />
-      )}
-    </div>
-  );
-});
-
-export const MessageList = memo(function MessageListWrapper(props: MessageListProps) {
-  return (
     <ErrorBoundary
       fallback={
         <div className="flex flex-col items-center justify-center h-full p-4 text-center">
@@ -276,7 +223,71 @@ export const MessageList = memo(function MessageListWrapper(props: MessageListPr
         </div>
       }
     >
-      <MessageListContent key={`${props.channelId}-${props.chatType}`} {...props} />
+      <div className="flex h-full">
+        {/* Main area: messages + input */}
+        <div className="flex-1 flex flex-col">
+          {/* Search bar */}
+          <div className="p-4 border-b flex items-center justify-between">
+            <h1 className="text-lg font-semibold text-black">
+              {chatType === 'channel' ? '#' : ''} {chatName}
+            </h1>
+            <SearchBar onSearch={handleSearch} placeholder="Search messages..." />
+          </div>
+
+          <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-none hover:scrollbar-thin scrollbar-track-transparent scrollbar-thumb-indigo-600/40 hover:scrollbar-thumb-indigo-600/60 [&::-webkit-scrollbar-thumb]:rounded [&::-webkit-scrollbar-thumb]:min-h-[40px]">
+            {/* No results message when searching */}
+            {searchQuery && messages.length === 0 && !isLoading && (
+              <div className="flex flex-col items-center justify-center py-8 text-gray-500">
+                <p>No messages found matching "{searchQuery}"</p>
+              </div>
+            )}
+
+            {/* Message list */}
+            {messages.map((message) => (
+              <MessageBubble
+                key={`${channelId}-${message.id}`}
+                message={{
+                  ...message,
+                  profile: message.user,
+                  profile_id: message.user_id
+                }}
+                isOptimistic={message.id.startsWith('temp-')}
+                onOpenThread={(m) => openThread(m as MessageWithUser)}
+              />
+            ))}
+
+            <div ref={messagesEndRef} />
+          </div>
+
+          {/* Input Area */}
+          <div className="p-4 border-t">
+            <MessageInput
+              onSubmit={handleSendMessage}
+              onFileSelect={handleFileSelect}
+              selectedFile={selectedFile}
+              isUploading={isUploading}
+            />
+            {uploadError && (
+              <div className="text-sm text-red-500 flex items-center justify-between" role="alert">
+                <span>{uploadError.message}</span>
+                {uploadError.retry && (
+                  <button
+                    onClick={uploadError.retry}
+                    className="text-red-600 hover:text-red-700 font-medium"
+                  >
+                    Retry Upload
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Optional side panel for threads */}
+        {threadParent && (
+          <ThreadView parentMessage={threadParent} onClose={closeThread} />
+        )}
+      </div>
     </ErrorBoundary>
   );
 });

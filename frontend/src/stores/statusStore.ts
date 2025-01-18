@@ -14,6 +14,11 @@ interface StatusState {
   subscribedUsers: Set<string>
 }
 
+interface ProfileResponse {
+  status?: string;
+  [key: string]: any;
+}
+
 export const useStatusStore = create<StatusState>((set, get) => ({
   userStatuses: {},
   userProfiles: {},
@@ -47,37 +52,38 @@ export const useStatusStore = create<StatusState>((set, get) => ({
     }))
 
     // Initial status and profile fetch
-    supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', userId)
-      .single()
-      .then(({ data }) => {
-        if (data) {
-          // Update both status and profile
-          set((state) => ({
-            userStatuses: {
-              ...state.userStatuses,
-              [userId]: data.status as UserStatus
-            },
-            userProfiles: {
-              ...state.userProfiles,
-              [userId]: data as User
-            },
-            loadingProfiles: new Set(
-              Array.from(state.loadingProfiles).filter(id => id !== userId)
-            )
-          }))
-        }
-      })
-      .catch(() => {
-        // Remove from loading state even if fetch fails
+    Promise.resolve(
+      supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .single()
+    ).then(({ data }) => {
+      if (data) {
+        const profile = data as ProfileResponse
+        // Update both status and profile
         set((state) => ({
+          userStatuses: {
+            ...state.userStatuses,
+            [userId]: (profile.status || 'offline').toUpperCase() as UserStatus
+          },
+          userProfiles: {
+            ...state.userProfiles,
+            [userId]: data as User
+          },
           loadingProfiles: new Set(
             Array.from(state.loadingProfiles).filter(id => id !== userId)
           )
         }))
-      })
+      }
+    }).catch(() => {
+      // Remove from loading state even if fetch fails
+      set((state) => ({
+        loadingProfiles: new Set(
+          Array.from(state.loadingProfiles).filter(id => id !== userId)
+        )
+      }))
+    })
 
     // Subscribe to changes
     const channel = supabase
@@ -92,11 +98,12 @@ export const useStatusStore = create<StatusState>((set, get) => ({
         },
         (payload) => {
           if (payload.new) {
+            const profile = payload.new as ProfileResponse
             // Update both status and profile
             set((state) => ({
               userStatuses: {
                 ...state.userStatuses,
-                [userId]: payload.new.status as UserStatus
+                [userId]: (profile.status || 'offline').toUpperCase() as UserStatus
               },
               userProfiles: {
                 ...state.userProfiles,

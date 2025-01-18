@@ -185,7 +185,7 @@ export class AuthManager {
         // Set status to offline before signing out
         const { error: updateError } = await supabase
           .from('profiles')
-          .update({ status: 'OFFLINE' })
+          .update({ status: 'offline' })
           .eq('id', user.id)
 
         if (updateError) {
@@ -243,7 +243,7 @@ export class AuthManager {
     if (this.state.user) {
       await supabase
         .from('profiles')
-        .update({ status: 'OFFLINE' })
+        .update({ status: 'offline' })
         .eq('id', this.state.user.id)
     }
     

@@ -90,7 +90,9 @@ CREATE OR REPLACE FUNCTION send_direct_message(
   p_channel_id UUID,
   p_user_id UUID,
   p_profile_id UUID,
-  p_content TEXT
+  p_content TEXT,
+  p_message_type TEXT DEFAULT 'text',
+  p_metadata JSONB DEFAULT '{}'::jsonb
 ) RETURNS direct_messages AS $$
 DECLARE
   v_message direct_messages;
@@ -100,12 +102,20 @@ BEGIN
     channel_id,
     user_id,
     profile_id,
-    content
+    content,
+    message_type,
+    metadata,
+    created_at,
+    updated_at
   ) VALUES (
     p_channel_id,
     p_user_id,
     p_profile_id,
-    p_content
+    p_content,
+    p_message_type,
+    p_metadata,
+    NOW(),
+    NOW()
   )
   RETURNING * INTO v_message;
 
@@ -117,6 +127,12 @@ BEGIN
   RETURN v_message;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Grant execute permission
+GRANT EXECUTE ON FUNCTION send_direct_message(UUID, UUID, UUID, TEXT, TEXT, JSONB) TO authenticated;
+
+-- Add explicit comment for PostgREST
+COMMENT ON FUNCTION send_direct_message(UUID, UUID, UUID, TEXT, TEXT, JSONB) IS 'Sends a direct message and updates the channel timestamp with parameters in order: p_channel_id, p_user_id, p_profile_id, p_content, p_message_type, p_metadata';
 
 -- Add indexes for performance
 CREATE INDEX IF NOT EXISTS idx_messages_channel_id ON messages (channel_id);

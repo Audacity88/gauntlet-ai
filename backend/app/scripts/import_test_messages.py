@@ -7,272 +7,474 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from uuid import uuid4
 from dotenv import load_dotenv
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy import text, select
+import httpx
+import uuid
+import pandas as pd
+from typing import Optional, Dict, Any, List, Tuple
+from supabase import create_client, Client
+from postgrest.exceptions import APIError
 
-from app.models.channel import Channel, ChannelMember
-from app.models.message import Message, MessageAttachment
-from app.models.user import User, Profile
-from app.models.direct_message import DirectMessage, DirectMessageChannel, DirectMessageMember
+# Make these imports optional since we don't need them for testing the parser
+try:
+    from app.core.database import Client, create_client
+except ImportError:
+    pass
 
 load_dotenv()
 
-def parse_timestamp(timestamp_str: str) -> datetime | None:
-    try:
-        # Try to parse "Yesterday at 1:25 AM" format
-        if "Yesterday at" in timestamp_str:
-            time_str = timestamp_str.replace("Yesterday at ", "")
-            time_obj = datetime.strptime(time_str, "%I:%M %p")
-            yesterday = datetime.now() - timedelta(days=1)
-            return datetime.combine(yesterday.date(), time_obj.time())
+def is_timestamp_line(line: str) -> bool:
+    """Check if a line contains a timestamp in the format [HH:MM AM/PM]"""
+    return bool(re.match(r'^\[\d{1,2}:\d{2} [AP]M\]$', line))
 
-        # Try to parse "Today at 1:15 AM" format
-        if "Today at" in timestamp_str:
-            time_str = timestamp_str.replace("Today at ", "")
-            time_obj = datetime.strptime(time_str, "%I:%M %p")
-            return datetime.combine(datetime.now().date(), time_obj.time())
+def is_number_line(line: str) -> bool:
+    """Check if a line is just a number"""
+    return bool(re.match(r'^\d+$', line))
 
-        # Try to parse "1/5/25, 6:41 AM" format
-        return datetime.strptime(timestamp_str, "%m/%d/%y, %I:%M %p")
-    except ValueError:
-        print(f"Failed to parse timestamp: {timestamp_str}")
-        return None
+def is_header_line(line: str) -> bool:
+    """Check if line is a username-timestamp header line"""
+    return ' — ' in line
 
-def parse_messages(content: str) -> list[dict]:
+def parse_messages(file_path: Path) -> List[Dict[str, Any]]:
+    """Parse messages from the file"""
     messages = []
-    lines = [line.strip() for line in content.split('\n') if line.strip()]
-    
+    with open(file_path, 'r') as f:
+        lines = f.readlines()
+        
     i = 0
-    while i < len(lines) - 1:  # Need at least 2 lines for a valid message
-        # Check if current line matches the format "username — timestamp"
-        match = re.match(r'^([^—]+) — (.+)$', lines[i])
-        if match:
-            username, timestamp = match.groups()
-            timestamp_obj = parse_timestamp(timestamp.strip())
+    while i < len(lines):
+        line = lines[i].strip()
+        
+        # Skip empty lines, @ references, URLs, and number-only lines
+        if (not line or line.startswith('@') or line.startswith('http') 
+            or is_number_line(line)):
+            i += 1
+            continue
             
-            # Only process if we have a valid timestamp and next line exists
-            if timestamp_obj:
-                messages.append({
-                    'username': username.strip(),
-                    'timestamp': timestamp_obj,
-                    'content': lines[i + 1]
-                })
-                i += 2  # Skip the next line since we've used it as content
-            else:
-                i += 1  # Invalid timestamp, move to next line
+        # If this is a header line, look ahead for consecutive headers
+        if is_header_line(line):
+            current_header = line
+            peek = i + 1
+            
+            # Keep looking ahead while we find consecutive headers
+            while peek < len(lines):
+                next_line = lines[peek].strip()
+                if is_header_line(next_line):
+                    current_header = next_line  # Keep the latest header
+                    peek += 1
+                    i = peek  # Update i to skip all previous headers
+                else:
+                    break
+                    
+            # Now process the last header we found
+            parts = current_header.split(' — ')
+            if len(parts) != 2:
+                i += 1
+                continue
+                
+            username, timestamp = parts
+            username = username.strip()
+            timestamp = timestamp.strip()
+            
+            # Initialize content list to handle multi-line messages
+            content_lines = []
+            
+            # Move to next line
+            i += 1
+            
+            # Keep reading lines until we hit another timestamp line or end of file
+            while i < len(lines):
+                next_line = lines[i].strip()
+                
+                # Stop if we hit another message header or empty line
+                if not next_line or is_header_line(next_line) or next_line.startswith('@'):
+                    break
+                    
+                # Skip URLs, numbers, and timestamp-only lines
+                if (not next_line.startswith('http') and 
+                    not is_number_line(next_line) and 
+                    not is_timestamp_line(next_line)):
+                    content_lines.append(next_line)
+                
+                i += 1
+                
+            # Join content lines, defaulting to username if no content
+            content = ' '.join(content_lines) if content_lines else username
+                
+            try:
+                # Try different timestamp formats
+                dt = None
+                try:
+                    # Try MM/DD/YY, HH:MM AM/PM format
+                    dt = datetime.strptime(timestamp, '%m/%d/%y, %I:%M %p')
+                except ValueError:
+                    try:
+                        # Try "Yesterday at HH:MM AM" format
+                        if timestamp.startswith('Yesterday at '):
+                            time_str = timestamp.replace('Yesterday at ', '')
+                            time_part = datetime.strptime(time_str, '%I:%M %p').time()
+                            dt = datetime.combine(datetime.now().date() - timedelta(days=1), time_part)
+                        # Try "Today at HH:MM AM" format
+                        elif timestamp.startswith('Today at '):
+                            time_str = timestamp.replace('Today at ', '')
+                            time_part = datetime.strptime(time_str, '%I:%M %p').time()
+                            dt = datetime.combine(datetime.now().date(), time_part)
+                    except ValueError:
+                        print(f"Error parsing timestamp {timestamp}")
+                        continue
+                
+                if dt:
+                    messages.append({
+                        'username': username,
+                        'content': content,
+                        'timestamp': dt.isoformat()
+                    })
+            except Exception as e:
+                print(f"Error parsing timestamp {timestamp}: {e}")
+                continue
         else:
-            i += 1  # Not a username/timestamp line, move to next line
+            i += 1
     
     return messages
 
-async def get_or_create_user_and_profile(session: AsyncSession, username: str) -> tuple[User, Profile]:
-    """Get or create a user and profile, handling race conditions."""
-    
-    # Build the user email from the username
-    email = f"{username.lower()}@test.com"
-    
-    # Try to find existing profile first
-    stmt = select(Profile).where(Profile.username == username)
-    result = await session.execute(stmt)
-    existing_profile = result.scalar_one_or_none()
-    
-    if existing_profile:
-        # Get the associated user
-        stmt = select(User).where(User.id == existing_profile.id)
-        result = await session.execute(stmt)
-        existing_user = result.scalar_one_or_none()
-        if existing_user:
-            return existing_user, existing_profile
-    
-    # No profile found, try to find user by email
-    stmt = select(User).where(User.email == email)
-    result = await session.execute(stmt)
-    existing_user = result.scalar_one_or_none()
-    
-    if not existing_user:
-        # Create new user with a new UUID and set username in metadata
-        user_id = uuid4()
-        existing_user = User(
-            id=user_id,
-            email=email,
-            raw_user_meta_data={'username': username}  # This will be used by the trigger
-        )
-        session.add(existing_user)
-        await session.flush()
-    
-    # Check one more time for an existing profile
-    stmt = select(Profile).where(Profile.id == existing_user.id)
-    result = await session.execute(stmt)
-    existing_profile = result.scalar_one_or_none()
-    
-    if existing_profile:
-        return existing_user, existing_profile
-    
-    # Create new profile with the user's ID
-    try:
-        profile = Profile(
-            id=existing_user.id,
-            username=username,  # The trigger will handle this based on raw_user_meta_data
-            full_name=username
-        )
-        session.add(profile)
-        await session.flush()
-        return existing_user, profile
-    except Exception as e:
-        # If profile creation failed, try one last time to get existing profile
-        stmt = select(Profile).where(Profile.id == existing_user.id)
-        result = await session.execute(stmt)
-        existing_profile = result.scalar_one_or_none()
-        if existing_profile:
-            return existing_user, existing_profile
-        raise e
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY")
 
-async def create_channel_from_file(session: AsyncSession, created_by_user_id: str, file_path: Path) -> Channel:
+if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+    raise ValueError("SUPABASE_URL and SUPABASE_SERVICE_KEY must be set")
+    
+async def create_user_and_profile(http_client: httpx.AsyncClient, username: str) -> str:
+    email = f"{username.lower().replace(' ', '_')}@example.com"
+    
+    auth_headers = {
+        "apikey": SUPABASE_SERVICE_KEY,
+        "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}",
+        "Content-Type": "application/json"
+    }
+    
+    # First check if user exists
+    response = await http_client.get(
+        f"{SUPABASE_URL}/auth/v1/admin/users",
+        headers=auth_headers
+    )
+    
+    if response.status_code == 200:
+        response_data = response.json()
+        users = response_data.get('users', [])
+        print(f"Found {len(users)} users")
+        
+        # Find user by email
+        existing_user = next((user for user in users if user.get("email") == email), None)
+        if existing_user:
+            print(f"Found existing user with email {email}")
+            user_id = existing_user["id"]
+        else:
+            # Create new user
+            user_id = str(uuid.uuid4())
+            user_data = {
+                "id": user_id,
+                "email": email,
+                "password": "test123",  # Dummy password
+                "email_confirm": True
+            }
+            
+            response = await http_client.post(
+                f"{SUPABASE_URL}/auth/v1/admin/users",
+                headers=auth_headers,
+                json=user_data
+            )
+            
+            if response.status_code != 201:
+                print(f"Error creating user: {response.text}")
+                raise Exception(f"Failed to create user: {response.text}")
+            print(f"Created new user with email {email}")
+    else:
+        print(f"Error checking for existing user: {response.text}")
+        raise Exception(f"Failed to check for existing user: {response.text}")
+        
+    # Now check if profile exists
+    response = await http_client.get(
+        f"{SUPABASE_URL}/rest/v1/profiles",
+        headers={**auth_headers, "Prefer": "return=representation"},
+        params={"id": f"eq.{user_id}"}
+    )
+    
+    if response.status_code == 200:
+        profiles = response.json()
+        if not profiles:
+            # Create new profile
+            profile_data = {
+                "id": user_id,
+                "username": username,
+                "full_name": username,
+                "created_at": datetime.utcnow().isoformat(),
+                "updated_at": datetime.utcnow().isoformat()
+            }
+            
+            response = await http_client.post(
+                f"{SUPABASE_URL}/rest/v1/profiles",
+                headers={**auth_headers, "Prefer": "return=representation"},
+                json=profile_data
+            )
+            
+            if response.status_code != 201:
+                print(f"Error creating profile: {response.text}")
+                raise Exception(f"Failed to create profile: {response.text}")
+            print(f"Created new profile for user {user_id}")
+        else:
+            print(f"Found existing profile for user {user_id}")
+    else:
+        print(f"Error checking for existing profile: {response.text}")
+        raise Exception(f"Failed to check for existing profile: {response.text}")
+        
+    return user_id
+
+async def get_or_create_user_and_profile(client: Client, username: str) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    """Get or create a user and profile, handling race conditions."""
+    try:
+        # Try to find existing profile first
+        try:
+            print(f"Looking for existing profile for username: {username}")
+            response = client.table('profiles').select("*").eq("username", username).execute()
+            response_data = response.data if hasattr(response, 'data') else []
+            # print(f"Profile search response: {response_data}")
+            if response_data:
+                existing_profile = response_data[0]
+                print(f"Found existing profile")
+                return {"id": existing_profile["id"]}, existing_profile
+        except Exception as e:
+            print(f"Error searching for profile: {str(e)}")
+            if hasattr(e, 'response'):
+                print(f"Response: {e.response}")
+            pass
+        
+        # No profile found, create a new user and profile
+        try:
+            user_id = str(uuid4())
+            email = f"{username.lower().replace(' ', '_')}@test.com"
+            
+            # Create auth user first
+            async with httpx.AsyncClient() as http_client:
+                headers = {
+                    "apikey": os.getenv("SUPABASE_SERVICE_KEY"),
+                    "Authorization": f"Bearer {os.getenv('SUPABASE_SERVICE_KEY')}",
+                    "Content-Type": "application/json"
+                }
+                user_data = {
+                    "id": user_id,
+                    "email": email,
+                    "password": "test123",  # Temporary password
+                    "email_confirm": True,
+                    "user_metadata": {'username': username}
+                }
+                print(f"Creating new auth user with data: {user_data}")
+                response = await http_client.post(
+                    f"{os.getenv('SUPABASE_URL')}/auth/v1/admin/users",
+                    headers=headers,
+                    json=user_data
+                )
+                # print(f"Auth user creation response: {response.text}")
+                if response.status_code == 201:
+                    user_response = response.json()
+                    user_id = user_response["id"]
+                elif "duplicate key value" in response.text:
+                    # If user already exists, try to fetch it
+                    response = await http_client.get(
+                        f"{os.getenv('SUPABASE_URL')}/auth/v1/admin/users",
+                        headers=headers
+                    )
+                    if response.status_code == 200:
+                        users = response.json()["users"]
+                        existing_user = next((user for user in users if user["email"] == email), None)
+                        if existing_user:
+                            user_id = existing_user["id"]
+                        else:
+                            raise Exception(f"Could not find user with email {email}")
+                    else:
+                        raise Exception(f"Failed to fetch existing user: {response.text}")
+                else:
+                    raise Exception(f"Failed to create auth user")
+            
+            # Now create the profile
+            profile_data = {
+                "id": user_id,
+                "username": username,
+                "full_name": username
+            }
+            print(f"Creating new profile with data: {profile_data}")
+            response = client.table('profiles').insert(profile_data).execute()
+            response_data = response.data if hasattr(response, 'data') else []
+            print(f"Profile creation response: {response_data}")
+            if response_data:
+                profile = response_data[0]
+                return {"id": user_id}, profile
+            else:
+                # If profile creation failed, try to fetch existing profile
+                try:
+                    response = client.table('profiles').select("*").eq("id", user_id).execute()
+                    response_data = response.data if hasattr(response, 'data') else []
+                    if response_data:
+                        existing_profile = response_data[0]
+                        print(f"Found existing profile after creation failed: {existing_profile}")
+                        return {"id": user_id}, existing_profile
+                except Exception as inner_e:
+                    print(f"Error fetching existing profile: {str(inner_e)}")
+                raise Exception("Failed to create profile and couldn't find existing one")
+        except Exception as e:
+            print(f"Error creating user/profile: {str(e)}")
+            if hasattr(e, 'response'):
+                print(f"Response: {e.response}")
+            raise
+    except Exception as e:
+        print(f"Unexpected error in get_or_create_user_and_profile: {str(e)}")
+        if hasattr(e, 'response'):
+            print(f"Response: {e.response}")
+        raise
+
+async def create_channel_from_file(client: Client, created_by_user_id: str, file_path: Path) -> Dict[str, Any]:
     """Create or get channel based on filename."""
     # Get channel name from filename (without extension)
     channel_name = file_path.stem
     
     # Check if channel exists
-    stmt = select(Channel).where(Channel.slug == channel_name)
-    result = await session.execute(stmt)
-    channel = result.scalar_one_or_none()
+    try:
+        response = client.table('channels').select("*").eq("slug", channel_name).execute()
+        response_data = response.data if hasattr(response, 'data') else []
+        if response_data:
+            return response_data[0]
+    except Exception as e:
+        print(f"Error checking for existing channel: {str(e)}")
+        if hasattr(e, 'response'):
+            print(f"Response: {e.response}")
+        pass
 
-    if not channel:
-        # Create channel
-        channel = Channel(
-            id=uuid4(),
-            slug=channel_name,
-            created_by=created_by_user_id
-        )
-        session.add(channel)
-        await session.flush()
+    # Create channel
+    try:
+        channel_data = {
+            "id": str(uuid4()),
+            "slug": channel_name,
+            "created_by": created_by_user_id
+        }
+        response = client.table('channels').insert(channel_data).execute()
+        response_data = response.data if hasattr(response, 'data') else []
+        if response_data:
+            return response_data[0]
+        else:
+            # If creation failed, try one last time to get existing channel
+            response = client.table('channels').select("*").eq("slug", channel_name).execute()
+            response_data = response.data if hasattr(response, 'data') else []
+            if response_data:
+                return response_data[0]
+            raise Exception("Failed to create channel and couldn't find existing one")
+    except Exception as e:
+        print(f"Error creating channel: {str(e)}")
+        if hasattr(e, 'response'):
+            print(f"Response: {e.response}")
+        raise
 
-    return channel
-
-async def import_messages(messages: list[dict], file_path: Path):
+async def import_messages(messages: List[Dict[str, Any]], file_path: Path) -> None:
     print("\nImporting messages to database...")
-    database_url = os.getenv("DATABASE_URL")
-    if not database_url:
-        raise ValueError("DATABASE_URL environment variable is not set")
-
-    if database_url.startswith("postgresql://"):
-        database_url = database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
-
-    engine = create_async_engine(database_url)
-    async_session = sessionmaker(engine, class_=AsyncSession)
+    
+    # Initialize Supabase client
+    supabase_url = os.getenv("SUPABASE_URL")
+    supabase_key = os.getenv("SUPABASE_SERVICE_KEY")
+    if not supabase_url or not supabase_key:
+        raise ValueError("SUPABASE_URL and SUPABASE_SERVICE_KEY environment variables must be set")
+    
+    client = create_client(supabase_url, supabase_key)
+    print(f"Initializing Supabase client with URL: {supabase_url}")
 
     successful_imports = 0
     skipped_messages = 0
 
-    async with async_session() as session:
-        async with session.begin():
+    try:
+        # Try to find or create first user and channel
+        first_message = messages[0]
+        print(f"Processing first message: {first_message}")
+        
+        # Create new user/profile
+        try:
+            first_user, first_profile = await get_or_create_user_and_profile(
+                client, first_message['username']
+            )
+        except Exception as e:
+            print(f"Error creating first user/profile: {str(e)}")
+            print(f"Error type: {type(e)}")
+            if hasattr(e, 'response'):
+                print(f"Response: {e.response}")
+            return
+
+        # Create or get channel based on filename
+        channel = await create_channel_from_file(client, str(first_user["id"]), file_path)
+
+        # Cache for user/profile pairs to avoid redundant database calls
+        user_profile_cache = {
+            first_message['username']: (first_user, first_profile)
+        }
+
+        # Process all messages
+        for msg in messages:
             try:
-                # Try to find or create first user and channel
-                first_message = messages[0]
-                
-                # First try to find existing profile
-                stmt = select(Profile).where(Profile.username == first_message['username'])
-                result = await session.execute(stmt)
-                first_profile = result.scalar_one_or_none()
-                
-                if first_profile:
-                    # Get associated user
-                    stmt = select(User).where(User.id == first_profile.id)
-                    result = await session.execute(stmt)
-                    first_user = result.scalar_one_or_none()
-                    if not first_user:
-                        print("Error: Found profile but no associated user")
-                        return
-                else:
-                    # Create new user/profile
+                if msg['username'] not in user_profile_cache:
                     try:
-                        first_user, first_profile = await get_or_create_user_and_profile(
-                            session, first_message['username']
+                        user, profile = await get_or_create_user_and_profile(
+                            client, msg['username']
                         )
+                        user_profile_cache[msg['username']] = (user, profile)
                     except Exception as e:
-                        print(f"Error creating first user/profile: {str(e)}")
-                        return
-
-                # Create or get channel based on filename
-                channel = await create_channel_from_file(session, str(first_user.id), file_path)
-
-                # Cache for user/profile pairs to avoid redundant database calls
-                user_profile_cache = {
-                    first_message['username']: (first_user, first_profile)
-                }
-
-                # Process all messages
-                for msg in messages:
-                    try:
-                        if msg['username'] not in user_profile_cache:
-                            try:
-                                user, profile = await get_or_create_user_and_profile(
-                                    session, msg['username']
-                                )
-                                user_profile_cache[msg['username']] = (user, profile)
-                            except Exception as e:
-                                print(f"Error creating user/profile for {msg['username']}: {str(e)}")
-                                skipped_messages += 1
-                                continue
-                        else:
-                            user, profile = user_profile_cache[msg['username']]
-
-                        message = Message(
-                            id=uuid4(),
-                            channel_id=channel.id,
-                            user_id=user.id,
-                            profile_id=profile.id,
-                            content=msg['content'],
-                            inserted_at=(
-                                msg['timestamp'] if msg['timestamp'] else datetime.now()
-                            )
-                        )
-                        session.add(message)
-                        successful_imports += 1
-                    except Exception as e:
-                        print(f"Error importing message: {str(e)}")
+                        print(f"Error creating user/profile for {msg['username']}: {str(e)}")
                         skipped_messages += 1
+                        continue
+                else:
+                    user, profile = user_profile_cache[msg['username']]
 
-                print(f"\nImport summary:")
-                print(f"Successfully imported: {successful_imports} messages")
-                print(f"Skipped messages: {skipped_messages}")
-                print("Import completed!")
-
+                message_data = {
+                    "id": str(uuid4()),
+                    "channel_id": channel["id"],
+                    "user_id": user["id"],
+                    "profile_id": profile["id"],
+                    "content": msg['content'],
+                    "inserted_at": msg['timestamp']
+                }
+                response = client.table('messages').insert(message_data).execute()
+                response_data = response.data if hasattr(response, 'data') else []
+                if response_data:
+                    successful_imports += 1
+                else:
+                    print(f"Error importing message: No data in response")
+                    skipped_messages += 1
             except Exception as e:
-                print(f"Error during import: {str(e)}")
-                raise e
+                print(f"Error importing message: {str(e)}")
+                skipped_messages += 1
 
-async def main():
+        print(f"\nImport summary:")
+        print(f"Successfully imported: {successful_imports} messages")
+        print(f"Skipped messages: {skipped_messages}")
+        print("Import completed!")
+
+    except Exception as e:
+        print(f"Error during import: {str(e)}")
+        raise e
+
+async def main() -> None:
+    """Main function to run the import script"""
     import argparse
     
-    # Set up argument parser
-    parser = argparse.ArgumentParser(description='Import messages from a TSV file into the database.')
-    parser.add_argument('file_path', nargs='?', type=str, 
-                       default=str(Path(__file__).parent.parent.parent / "app/rag/data/test_messages.tsv"),
-                       help='Path to the TSV file containing messages (default: test_messages.tsv)')
-    
+    parser = argparse.ArgumentParser(description='Import messages from a TSV file into Supabase')
+    parser.add_argument('file_path', type=str, help='Path to the TSV file containing messages')
     args = parser.parse_args()
+    
+    # Convert the input path to a Path object
     file_path = Path(args.file_path)
     
     if not file_path.exists():
-        print(f"Error: File not found: {file_path}")
-        return
+        raise FileNotFoundError(f"Message file not found at {file_path}")
+        
+    # Parse messages from the file
+    messages = parse_messages(file_path)
+    print(f"Parsed {len(messages)} messages from {file_path}")
     
-    if not file_path.suffix.lower() == '.tsv':
-        print(f"Error: File must be a TSV file: {file_path}")
-        return
-    
-    print(f"Reading messages from: {file_path}")
-
-    with open(file_path, 'r') as f:
-        content = f.read()
-
-    messages = parse_messages(content)
-    print(f"\nFound {len(messages)} messages to parse\n")
-
+    # Import the messages
     await import_messages(messages, file_path)
-    print("\nImport complete!")
 
 if __name__ == "__main__":
     asyncio.run(main())

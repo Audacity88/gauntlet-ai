@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import { UUID, Timestamp, TimestampFields, BaseEntity } from './base';
-import { UserStatus } from '../utils/PresenceManager';
+
+// Define UserStatus type directly
+export type UserStatus = 'ONLINE' | 'OFFLINE' | 'AWAY' | 'BUSY';
 
 // Base schemas for common fields
 export const timestampSchema = z.object({
@@ -19,11 +21,6 @@ export interface BaseMessage extends BaseEntity {
   user_id: UUID;
   content: string;
   attachments?: MessageAttachment[];
-
-  /**
-   * Optional parent_id for threads.
-   * If this message is a reply in a thread, parent_id references the top-level message in that thread.
-   */
   parent_id?: string | null;
 }
 
@@ -32,8 +29,6 @@ export const baseMessageSchema = baseEntitySchema.extend({
   user_id: z.string().uuid(),
   content: z.string().min(1, 'Message content cannot be empty'),
   attachments: z.array(z.lazy(() => messageAttachmentSchema)).optional(),
-
-  // New optional parent_id field
   parent_id: z.string().uuid().nullable().optional()
 });
 
@@ -95,8 +90,28 @@ export const messageAttachmentSchema = baseEntitySchema.extend({
 });
 
 // Extended types with relationships
-export interface MessageWithUser extends BaseMessage {
+export interface MessageWithUser {
+  id: string;
+  channel_id: string;
+  user_id: string;
+  content: string;
+  created_at: string;
+  updated_at: string;
+  deleted_at?: string | null;
+  attachments?: any[] | null;
+  message_type: string;
+  parent_id?: string | null;
   user: User;
+  metadata?: {
+    is_avatar_response?: boolean;
+    is_introduction?: boolean;
+    model?: string;
+    usage?: {
+      prompt_tokens: number;
+      completion_tokens: number;
+      total_tokens: number;
+    };
+  };
 }
 
 export const messageWithUserSchema = baseMessageSchema.extend({

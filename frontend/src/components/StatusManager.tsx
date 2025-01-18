@@ -17,6 +17,49 @@ export function StatusManager() {
   const [error, setError] = useState<Error | null>(null)
   const [isInitialMount, setIsInitialMount] = useState(true)
 
+  const updateStatus = useCallback(async (newStatus: UserStatus) => {
+    if (!currentUser) return
+    
+    try {
+      // Update database - convert to lowercase for database storage
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({ status: newStatus.toLowerCase() })
+        .eq('id', currentUser.id)
+
+      if (updateError) throw updateError
+      
+      // Update cache - keep uppercase for frontend
+      await updateUserStatus(currentUser.id, newStatus)
+      return true
+    } catch (err) {
+      console.error('Error updating status:', err)
+      throw err
+    }
+  }, [currentUser, updateUserStatus])
+
+  const handleStatusChange = useCallback(async (newStatus: UserStatus) => {
+    if (!currentUser) return
+    
+    try {
+      setUpdating(true)
+      setError(null)
+      
+      // Update local state immediately
+      setStatus(newStatus)
+      setUserStatus(currentUser.id, newStatus)
+      
+      await updateStatus(newStatus)
+    } catch (err) {
+      setError(err instanceof Error ? err : new Error('Failed to update status'))
+      // Revert status on error
+      setStatus(status)
+      setUserStatus(currentUser.id, status)
+    } finally {
+      setUpdating(false)
+    }
+  }, [currentUser, setUserStatus, updateStatus, status])
+
   const getCurrentStatus = useCallback(async () => {
     if (!currentUser) return
 
@@ -28,16 +71,24 @@ export function StatusManager() {
         .from('profiles')
         .select('status, username, full_name, avatar_url')
         .eq('id', currentUser.id)
-        .single()
+        .maybeSingle()
 
       if (fetchError) {
         throw fetchError
       }
 
-      // Set status to ONLINE only on initial mount (sign in)
-      // Otherwise preserve existing status on page reload
-      if (data?.status && !isInitialMount) {
-        const newStatus = data.status as UserStatus
+      // If no profile exists yet or it's initial mount, set to online
+      if (!data || isInitialMount) {
+        try {
+          await updateStatus('ONLINE')
+          setStatus('ONLINE')
+          setUserStatus(currentUser.id, 'ONLINE')
+        } catch (err) {
+          console.error('Error setting initial status:', err)
+        }
+      } else {
+        // Otherwise preserve existing status - convert from lowercase in DB to uppercase for frontend
+        const newStatus = (data.status || 'offline').toUpperCase() as UserStatus
         setStatus(newStatus)
         setUserStatus(currentUser.id, newStatus)
         
@@ -51,10 +102,7 @@ export function StatusManager() {
           created_at: currentUser.created_at,
           updated_at: currentUser.updated_at
         }
-        updateUserStatus(currentUser.id, newStatus)
-      } else {
-        // Set default status to ONLINE for new users or on initial mount
-        await handleStatusChange('ONLINE')
+        await updateUserStatus(currentUser.id, newStatus)
       }
 
       // Mark initial mount as complete
@@ -65,7 +113,7 @@ export function StatusManager() {
     } finally {
       setLoading(false)
     }
-  }, [currentUser, setUserStatus, updateUserStatus, isInitialMount])
+  }, [currentUser, setUserStatus, updateUserStatus, isInitialMount, updateStatus])
 
   // Handle initial status fetch
   useEffect(() => {
@@ -73,37 +121,6 @@ export function StatusManager() {
       getCurrentStatus()
     }
   }, [currentUser, getCurrentStatus])
-
-  const handleStatusChange = useCallback(async (newStatus: UserStatus) => {
-    if (!currentUser) return
-    
-    try {
-      setUpdating(true)
-      setError(null)
-      
-      // Update local state immediately
-      setStatus(newStatus)
-      setUserStatus(currentUser.id, newStatus)
-      
-      // Update database
-      const { error: updateError } = await supabase
-        .from('profiles')
-        .update({ status: newStatus })
-        .eq('id', currentUser.id)
-
-      if (updateError) throw updateError
-      
-      // Update cache
-      await updateUserStatus(currentUser.id, newStatus)
-    } catch (err) {
-      setError(err instanceof Error ? err : new Error('Failed to update status'))
-      // Revert status on error
-      setStatus(status)
-      setUserStatus(currentUser.id, status)
-    } finally {
-      setUpdating(false)
-    }
-  }, [currentUser, setUserStatus, updateUserStatus, status])
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {

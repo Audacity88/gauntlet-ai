@@ -23,10 +23,13 @@ export function MessageInput({
     if (!content.trim() && !selectedFile) return
     
     setError(null)
+    const messageContent = content
+    setContent('') // Clear input immediately for better UX
+    
     try {
-      await onSubmit(content)
-      setContent('')
+      await onSubmit(messageContent)
     } catch (err) {
+      setContent(messageContent) // Restore content if sending fails
       setError(err instanceof Error ? err : new Error('Failed to send message'))
     }
   }
@@ -77,7 +80,7 @@ export function MessageInput({
           <button
             type="submit"
             disabled={isUploading || (!content.trim() && !selectedFile)}
-            className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50"
+            className="px-4 py-2 text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50"
           >
             {isUploading ? 'Sending...' : 'Send'}
           </button>

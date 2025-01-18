@@ -6,6 +6,20 @@ import { ErrorBoundary } from './ErrorBoundary';
 import { useStatusStore } from '../stores/statusStore';
 import { FileAttachment } from './FileAttachment';
 
+// Helper function to get the correct timestamp for a message
+const getMessageTimestamp = (message: MessageWithUser | DirectMessageWithUser): string => {
+  // For DMs, use created_at
+  if ('message' in message) {
+    return message.created_at;
+  }
+  // For channel messages, prefer inserted_at
+  if (message.inserted_at) {
+    return message.inserted_at;
+  }
+  // Fallback to created_at or updated_at
+  return message.created_at || message.updated_at || new Date().toISOString();
+};
+
 interface MessageError {
   code: string;
   message: string;
@@ -35,17 +49,23 @@ const MessageBubbleContent = memo(function MessageBubbleContent({
   const [error, setError] = useState<MessageError | null>(null);
 
   const content = 'content' in message ? message.content : message.message;
-  const isCurrentUser = currentUser?.id === message.user_id;
+  // Check both sender_id and user_id to handle both API and app messages
+  const isCurrentUser = currentUser?.id === (message.sender_id || message.user_id);
   const getUserProfile = useStatusStore((state) => state.getUserProfile);
-  const cachedUser = getUserProfile(message.user_id);
+  // Use sender_id if available, otherwise fall back to user_id
+  const cachedUser = getUserProfile(message.sender_id || message.user_id);
 
-  // Use cached user profile if available, otherwise use message.user
-  const user = cachedUser || message.user || {
-    id: message.user_id,
+  // Use cached user profile if available, otherwise use message.sender or message.user
+  const user = cachedUser || message.sender || message.user || {
+    id: message.sender_id || message.user_id,
     username: 'Unknown User',
     full_name: 'Unknown User',
     avatar_url: null
   };
+
+  // Get the correct timestamp for the message
+  const timestamp = getMessageTimestamp(message);
+  const messageDate = new Date(timestamp);
 
   const handleEdit = () => {
     setIsEditing(true);
@@ -107,7 +127,7 @@ const MessageBubbleContent = memo(function MessageBubbleContent({
         ) : (
           <div className="w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center">
             <span className="text-indigo-700 font-medium">
-              {user.username.charAt(0).toUpperCase()}
+              {user.full_name?.charAt(0).toUpperCase() || user.username.charAt(0).toUpperCase()}
             </span>
           </div>
         )}
@@ -131,9 +151,9 @@ const MessageBubbleContent = memo(function MessageBubbleContent({
               isCurrentUser ? 'flex-row-reverse space-x-reverse' : ''
             }`}
           >
-            <span className="font-medium text-gray-900">{user.username}</span>
+            <span className="font-medium text-gray-900">{user.full_name || user.username}</span>
             <span className="text-sm text-gray-500">
-              {new Date(message.created_at).toLocaleString(undefined, {
+              {messageDate.toLocaleString(undefined, {
                 month: 'short',
                 day: 'numeric',
                 hour: 'numeric',
@@ -299,7 +319,7 @@ const MessageBubbleContent = memo(function MessageBubbleContent({
           <div className={`mt-1 ${isCurrentUser ? 'text-right' : 'text-left'}`}>
             <button
               onClick={() => onOpenThread(message)}
-              className="text-xs text-blue-600 hover:underline"
+              className="text-xs px-2 py-1 text-gray-500 hover:text-gray-700 bg-indigo-50 hover:bg-indigo-100 rounded"
             >
               Reply in thread
             </button>

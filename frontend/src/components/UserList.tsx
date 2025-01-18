@@ -4,6 +4,7 @@ import { UserPresence } from './UserPresence';
 import { User } from '../types/models';
 import { useAuth } from '../hooks/useAuth';
 import { supabase } from '../lib/supabaseClient';
+import { useStatusStore } from '../stores/statusStore';
 
 interface UserListProps {
   onUserSelect?: (user: User) => void;
@@ -23,6 +24,9 @@ export function UserList({
   const [error, setError] = useState<Error | null>(null)
   const { user: currentUser } = useAuth()
   const { getUser } = useUserCache()
+  const subscribeToUserStatus = useStatusStore(state => state.subscribeToUserStatus)
+  const getUserStatus = useStatusStore(state => state.getUserStatus)
+  const userStatuses = useStatusStore(state => state.userStatuses)
 
   // Load users
   useEffect(() => {
@@ -42,6 +46,10 @@ export function UserList({
 
         if (mounted && data) {
           setUsers(data)
+          // Subscribe to status updates for all users
+          data.forEach(user => {
+            subscribeToUserStatus(user.id)
+          })
         }
       } catch (err) {
         if (mounted) {
@@ -73,6 +81,7 @@ export function UserList({
             setUsers(prevUsers => {
               const userIndex = prevUsers.findIndex(u => u.id === updatedUser.id)
               if (userIndex === -1) {
+                subscribeToUserStatus(updatedUser.id)
                 return [...prevUsers, updatedUser]
               }
               const newUsers = [...prevUsers]
@@ -88,24 +97,24 @@ export function UserList({
       mounted = false
       supabase.removeChannel(channel)
     }
-  }, [])
+  }, [subscribeToUserStatus])
 
   // Filter and sort users
   const filteredUsers = useMemo(() => {
     return users
       .filter(user => {
         if (filter === 'all') return true
-        const userStatus = user.status || 'OFFLINE'
+        const userStatus = userStatuses[user.id]?.toUpperCase() || 'OFFLINE'
         return filter === 'online' ? userStatus === 'ONLINE' : userStatus === 'OFFLINE'
       })
       .sort((a, b) => {
         // Sort by status (online first) then by username
-        const statusA = a.status === 'ONLINE' ? 0 : 1
-        const statusB = b.status === 'ONLINE' ? 0 : 1
+        const statusA = (userStatuses[a.id]?.toUpperCase() || 'OFFLINE') === 'ONLINE' ? 0 : 1
+        const statusB = (userStatuses[b.id]?.toUpperCase() || 'OFFLINE') === 'ONLINE' ? 0 : 1
         if (statusA !== statusB) return statusA - statusB
         return a.username.localeCompare(b.username)
       })
-  }, [users, filter])
+  }, [users, filter, userStatuses])
 
   const handleUserClick = useCallback((user: User) => {
     if (onUserSelect && user.id !== currentUser?.id) {
@@ -141,7 +150,7 @@ export function UserList({
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 scrollbar-none hover:scrollbar-thin scrollbar-track-transparent scrollbar-thumb-indigo-600/40 hover:scrollbar-thumb-indigo-600/60 [&::-webkit-scrollbar-thumb]:rounded [&::-webkit-scrollbar-thumb]:min-h-[40px]">
       <div className="space-y-1">
         {filteredUsers.map(user => (
           <div
@@ -187,15 +196,15 @@ export function UserList({
             <div className="flex-1 min-w-0">
               <div className="flex items-center justify-between">
                 <p className="text-sm font-medium text-black truncate">
-                  {user.username}
+                  {user.full_name || user.username}
                   {user.id === currentUser?.id && (
                     <span className="ml-2 text-xs text-gray-500">(You)</span>
                   )}
                 </p>
               </div>
-              {user.full_name && (
+              {user.username && user.full_name && (
                 <p className="text-xs text-gray-500 truncate">
-                  {user.full_name}
+                  @{user.username}
                 </p>
               )}
             </div>

@@ -59,9 +59,9 @@ BEGIN
 
   -- Verify the user is a member of the channel
   IF NOT EXISTS (
-    SELECT 1 FROM dm_channel_members
-    WHERE channel_id = p_channel_id
-    AND user_id = p_user_id
+    SELECT 1 FROM dm_channel_members dcm
+    WHERE dcm.channel_id = p_channel_id
+    AND dcm.user_id = p_user_id
   ) THEN
     RAISE EXCEPTION 'User is not a member of this channel';
   END IF;
