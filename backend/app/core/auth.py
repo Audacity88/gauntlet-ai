@@ -19,7 +19,9 @@ def get_jwt_secret():
     """Get JWT secret and decode if base64 encoded"""
     secret = settings.SUPABASE_JWT_SECRET
     if not secret:
+        logger.error("SUPABASE_JWT_SECRET is not set")
         return None
+        
     try:
         # Try to decode as base64
         decoded = base64.b64decode(secret)
@@ -27,10 +29,16 @@ def get_jwt_secret():
         return decoded
     except Exception as e:
         logger.warning(f"JWT secret is not base64 encoded, using as is: {str(e)}")
+        if isinstance(secret, str):
+            return secret.encode('utf-8')
         return secret
 
 # Get the decoded JWT secret once at startup
 JWT_SECRET = get_jwt_secret()
+if JWT_SECRET:
+    logger.info(f"JWT secret loaded successfully (first 5 bytes): {JWT_SECRET[:5]}")
+else:
+    logger.error("Failed to load JWT secret")
 
 async def get_current_user(
     credentials: Annotated[HTTPAuthorizationCredentials, Depends(security)],
