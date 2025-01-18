@@ -90,23 +90,32 @@ async def get_current_user(
         logger.error(f"JWT validation error: {str(e)}")
         raise credentials_exception
     
-    # Get user from database using Supabase user ID
-    stmt = select(User).where(User.id == sub)
-    result = await session.execute(stmt)
-    user = result.scalar_one_or_none()
-    
-    if user is None:
-        # Create user if they don't exist
-        user = User(
-            id=sub,
-            email=email,
-            is_active=True
+    try:
+        # Get user from database using Supabase user ID
+        result = await session.execute(
+            select(User).filter(User.id == sub)
         )
-        session.add(user)
-        await session.commit()
-        logger.info(f"Created new user with ID {sub}")
-    
-    return user
+        user = result.scalar_one_or_none()
+        
+        if user is None:
+            # Create user if they don't exist
+            user = User(
+                id=sub,
+                email=email,
+                is_active=True
+            )
+            session.add(user)
+            await session.commit()
+            logger.info(f"Created new user with ID {sub}")
+        
+        return user
+        
+    except Exception as e:
+        logger.error(f"Database error: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Database error occurred"
+        )
 
 def create_access_token(data: dict, expires_delta: timedelta | None = None) -> str:
     """Create a new access token."""
