@@ -159,17 +159,6 @@ async def get_user_history(
 ) -> Dict[str, Any]:
     """Get message history for a specific user."""
     try:
-<<<<<<< HEAD
-        # Get current timestamp for soft delete
-        now = datetime.utcnow().isoformat()
-
-        # Update all messages in the channel to be soft deleted
-        result = db.from_("direct_messages")\
-            .update({"deleted_at": now})\
-            .eq("channel_id", str(request.channel_id))\
-            .filter("deleted_at", "is", "null")\
-            .execute()
-=======
         logger.info(f"Fetching history for user {request.target_user_id}")
         history_manager = UserHistoryManager(session)
         
@@ -207,7 +196,6 @@ async def get_user_history(
                 status_code=500,
                 detail=f"Error formatting messages: {str(e)}"
             )
->>>>>>> 5b6fbe7e4dd5bb01e4c8c5c98fe126e78fe44646
         
         return {
             "messages": formatted_messages,
