@@ -92,24 +92,22 @@ async def get_current_user(
     
     try:
         # Get user from database using Supabase user ID
-        stmt = select(User.__table__).where(User.__table__.c.id == sub)
+        stmt = select(User).where(User.id == sub)
         result = await session.execute(stmt)
-        user_data = result.mappings().one_or_none()
+        user = result.scalar_one_or_none()
         
-        if user_data is None:
+        if user is None:
             # Create user if they don't exist
-            new_user = User(
+            user = User(
                 id=sub,
                 email=email,
                 is_active=True
             )
-            session.add(new_user)
+            session.add(user)
             await session.commit()
             logger.info(f"Created new user with ID {sub}")
-            return new_user
+            return user
             
-        # Convert the row mapping to a User object
-        user = User(**dict(user_data))
         return user
         
     except Exception as e:
