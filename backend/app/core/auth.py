@@ -5,6 +5,8 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from supabase import Client
 import jwt
 import logging
+import base64
+import json
 
 from app.core.config import settings
 from app.core.database import get_db
@@ -12,6 +14,23 @@ from app.models.user import User, UserStatus
 
 logger = logging.getLogger(__name__)
 security = HTTPBearer()
+
+def get_jwt_secret():
+    """Get JWT secret and decode if base64 encoded"""
+    secret = settings.SUPABASE_JWT_SECRET
+    if not secret:
+        return None
+    try:
+        # Try to decode as base64
+        decoded = base64.b64decode(secret)
+        logger.info("Successfully decoded base64 JWT secret")
+        return decoded
+    except Exception as e:
+        logger.warning(f"JWT secret is not base64 encoded, using as is: {str(e)}")
+        return secret
+
+# Get the decoded JWT secret once at startup
+JWT_SECRET = get_jwt_secret()
 
 async def get_current_user(
     credentials: Annotated[HTTPAuthorizationCredentials, Depends(security)],
@@ -25,7 +44,7 @@ async def get_current_user(
         token = credentials.credentials
         logger.debug(f"Attempting to decode token: {token[:10]}...")
         
-        if not settings.SUPABASE_JWT_SECRET:
+        if not JWT_SECRET:
             logger.error("SUPABASE_JWT_SECRET is not set")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -33,12 +52,22 @@ async def get_current_user(
             )
             
         try:
+            # Log token parts for debugging
+            parts = token.split('.')
+            if len(parts) == 3:
+                header, payload, signature = parts
+                logger.debug(f"Token structure - Header: {header[:10]}... Payload: {payload[:10]}... Signature: {signature[:10]}...")
+                # Decode payload without verification for debugging
+                padded_payload = payload + '=' * (-len(payload) % 4)
+                decoded_payload = base64.b64decode(padded_payload)
+                payload_data = json.loads(decoded_payload)
+                logger.debug(f"Raw payload data: {payload_data}")
+            
             decoded = jwt.decode(
                 token, 
-                settings.SUPABASE_JWT_SECRET, 
+                JWT_SECRET, 
                 algorithms=["HS256"],
-                audience="authenticated",
-                options={"verify_aud": False}  # Skip audience verification
+                audience="authenticated"
             )
             logger.info(f"Successfully decoded token for user: {decoded.get('sub', 'unknown')}")
         except jwt.ExpiredSignatureError:

@@ -1,0 +1,245 @@
+from fastapi import FastAPI, HTTPException, Depends, status
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+import jwt
+import uvicorn
+from typing import Dict, Optional
+from pydantic import BaseModel
+import logging
+from datetime import datetime, timezone
+import os
+from dotenv import load_dotenv
+import base64
+
+# Load environment variables
+load_dotenv()
+
+# Configure logging
+logging.basicConfig(
+    level=logging.DEBUG,  # Changed to DEBUG for more detailed logs
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+# Create FastAPI app
+app = FastAPI(title="Test Chat API")
+
+# CORS configuration
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"]
+)
+
+# JWT Configuration
+def get_jwt_secret():
+    """Get JWT secret and decode if base64 encoded"""
+    secret = os.getenv('SUPABASE_JWT_SECRET', 'your-test-secret-key')
+    try:
+        # Try to decode as base64
+        decoded = base64.b64decode(secret)
+        logger.info("Successfully decoded base64 JWT secret")
+        return decoded
+    except Exception as e:
+        logger.warning(f"JWT secret is not base64 encoded, using as is: {str(e)}")
+        return secret
+
+MOCK_JWT_SECRET = get_jwt_secret()
+logger.info(f"Using JWT secret (first 5 chars of raw): {str(MOCK_JWT_SECRET)[:5]}...")
+
+# Mock users store - will be populated dynamically
+MOCK_USERS = {}
+
+# Security
+security = HTTPBearer()
+
+class MessageRequest(BaseModel):
+    content: str
+    target_user_id: Optional[str] = None
+
+class UserSummaryRequest(BaseModel):
+    target_user_id: str
+
+def get_or_create_user(user_id: str, email: str) -> Dict:
+    """Get a user from mock store or create if doesn't exist"""
+    if user_id not in MOCK_USERS:
+        username = email.split('@')[0] if email else f"user_{user_id[:8]}"
+        MOCK_USERS[user_id] = {
+            "id": user_id,
+            "username": username,
+            "email": email,
+            "status": "ONLINE",
+            "created_at": str(datetime.now(timezone.utc)),
+            "updated_at": str(datetime.now(timezone.utc))
+        }
+        logger.info(f"Created new mock user: {username} ({user_id})")
+    return MOCK_USERS[user_id]
+
+def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)) -> Dict:
+    try:
+        token = credentials.credentials
+        logger.debug(f"Received token: {token[:10]}...")
+        
+        if not MOCK_JWT_SECRET:
+            logger.error("SUPABASE_JWT_SECRET is not set")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Server configuration error: JWT secret not set",
+            )
+        
+        # Log token parts for debugging
+        try:
+            parts = token.split('.')
+            if len(parts) == 3:
+                header, payload, signature = parts
+                logger.debug(f"Token structure - Header: {header[:10]}... Payload: {payload[:10]}... Signature: {signature[:10]}...")
+                # Decode payload without verification for debugging
+                import base64
+                import json
+                padded_payload = payload + '=' * (-len(payload) % 4)
+                decoded_payload = base64.b64decode(padded_payload)
+                payload_data = json.loads(decoded_payload)
+                logger.debug(f"Raw payload data: {payload_data}")
+            else:
+                logger.warning("Token does not have three parts")
+        except Exception as e:
+            logger.warning(f"Could not decode token parts: {str(e)}")
+        
+        try:
+            # First try to decode without verification for debugging
+            unverified = jwt.decode(token, options={"verify_signature": False})
+            logger.debug(f"Unverified token payload: {unverified}")
+            
+            # Log the expected signature
+            try:
+                import hmac
+                import hashlib
+                message = f"{parts[0]}.{parts[1]}"
+                expected_sig = base64.urlsafe_b64encode(
+                    hmac.new(
+                        MOCK_JWT_SECRET if isinstance(MOCK_JWT_SECRET, bytes) else MOCK_JWT_SECRET.encode(),
+                        message.encode(),
+                        hashlib.sha256
+                    ).digest()
+                ).rstrip(b'=').decode('utf-8')
+                logger.debug(f"Expected signature prefix: {expected_sig[:10]}")
+                logger.debug(f"Received signature prefix: {signature[:10]}")
+            except Exception as e:
+                logger.warning(f"Could not calculate expected signature: {str(e)}")
+            
+            # Now try actual verification
+            decoded = jwt.decode(
+                token,
+                MOCK_JWT_SECRET,
+                algorithms=["HS256"],
+                audience="authenticated"
+            )
+            logger.debug("Successfully verified token signature")
+        except Exception as e:
+            logger.error(f"Token validation error: {str(e)}")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=f"Invalid token: {str(e)}",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        
+        user_id = decoded.get("sub")
+        if not user_id:
+            logger.warning("Token missing user ID")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Token missing user ID",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        
+        # Get or create user from token data
+        email = decoded.get("email", "")
+        user = get_or_create_user(user_id, email)
+        logger.debug(f"Retrieved/created user: {user['username']}")
+            
+        return user
+    except jwt.ExpiredSignatureError:
+        logger.warning("Token has expired")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token has expired",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    except jwt.InvalidTokenError as e:
+        logger.error(f"Token validation error: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Invalid token: {str(e)}",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    except Exception as e:
+        logger.error(f"Unexpected error: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+@app.post("/api/chat/send")
+async def send_message(
+    request: MessageRequest,
+    current_user: Dict = Depends(verify_token)
+) -> Dict:
+    logger.info(f"Received message from user {current_user['username']}")
+    return {
+        "status": "success",
+        "message": "Message sent successfully",
+        "data": {
+            "content": request.content,
+            "sender": current_user["username"],
+            "timestamp": str(datetime.now(timezone.utc))
+        }
+    }
+
+@app.post("/api/chat/user_summary")
+async def get_user_summary(
+    request: UserSummaryRequest,
+    current_user: Dict = Depends(verify_token)
+) -> Dict:
+    target_user = MOCK_USERS.get(request.target_user_id)
+    if not target_user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+        
+    return {
+        "status": "success",
+        "data": {
+            "user": target_user,
+            "recent_messages": [
+                {
+                    "content": "Mock message 1",
+                    "timestamp": str(datetime.now(timezone.utc))
+                },
+                {
+                    "content": "Mock message 2",
+                    "timestamp": str(datetime.now(timezone.utc))
+                }
+            ]
+        }
+    }
+
+@app.get("/api/health")
+async def health_check():
+    return {"status": "healthy"}
+
+if __name__ == "__main__":
+    print("\n=== Test Configuration ===")
+    print(f"JWT Secret being used (first 5 chars): {str(MOCK_JWT_SECRET)[:5]}...")
+    print("\nEndpoints:")
+    print("1. POST /api/chat/send")
+    print("2. POST /api/chat/user_summary")
+    print("3. GET /api/health")
+    print("\nUse your Supabase token in the Authorization header:")
+    print('Authorization: Bearer <your-supabase-token>')
+    
+    # Run the server
+    uvicorn.run(app, host="0.0.0.0", port=8000) 
