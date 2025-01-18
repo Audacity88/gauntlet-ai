@@ -3,7 +3,7 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 import jwt  # Using python-jwt instead of python-jose
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select as sa_select
 from datetime import datetime, timedelta
 from app.core.config import settings
 from app.core.database import get_session
@@ -92,9 +92,8 @@ async def get_current_user(
     
     try:
         # Get user from database using Supabase user ID
-        result = await session.execute(
-            select(User).filter(User.id == sub)
-        )
+        query = sa_select(User).where(User.id == sub)
+        result = await session.execute(query)
         user = result.scalar_one_or_none()
         
         if user is None:

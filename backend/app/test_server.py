@@ -40,12 +40,23 @@ settings = Settings()
 app = FastAPI(title="Test Chat API")
 
 # CORS configuration
+origins = [
+    "http://localhost:3000",     # Local development
+    "http://localhost:5173",     # Vite default
+    "https://chatgenius-nu.vercel.app",  # Vercel production
+    "https://chatgenius-git-main-dangilles.vercel.app",  # Vercel preview
+    "https://chatgenius-dangilles.vercel.app",  # Vercel custom domain
+]
+
+# Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
-    allow_headers=["*"]
+    allow_headers=["*"],
+    expose_headers=["*"],
+    max_age=3600,
 )
 
 # JWT Configuration
@@ -255,12 +266,38 @@ async def health_check():
 if __name__ == "__main__":
     print("\n=== Test Configuration ===")
     print(f"JWT Secret being used (first 5 chars): {str(MOCK_JWT_SECRET)[:5]}...")
-    print("\nEndpoints:")
+    
+    print("\n=== CORS Configuration ===")
+    print("Allowed Origins:")
+    for origin in origins:
+        print(f"  - {origin}")
+    print("\nAllowed Methods: *")
+    print("Allowed Headers: *")
+    print("Allow Credentials: True")
+    print("Max Age: 3600")
+    
+    print("\n=== API Endpoints ===")
     print("1. POST /api/chat/send")
     print("2. POST /api/chat/user_summary")
     print("3. GET /api/health")
-    print("\nUse your Supabase token in the Authorization header:")
-    print('Authorization: Bearer <your-supabase-token>')
+    
+    print("\n=== Testing Instructions ===")
+    print("1. Use your Supabase token in the Authorization header:")
+    print('   Authorization: Bearer <your-supabase-token>')
+    print("\n2. Test CORS with curl:")
+    print('   # Test preflight (OPTIONS):')
+    print('   curl -X OPTIONS http://localhost:8000/api/chat/send \\')
+    print('     -H "Origin: http://localhost:3000" \\')
+    print('     -H "Access-Control-Request-Method: POST" \\')
+    print('     -H "Access-Control-Request-Headers: authorization,content-type" \\')
+    print('     -v')
+    print('\n   # Test actual request:')
+    print('   curl -X POST http://localhost:8000/api/chat/send \\')
+    print('     -H "Origin: http://localhost:3000" \\')
+    print('     -H "Authorization: Bearer <your-token>" \\')
+    print('     -H "Content-Type: application/json" \\')
+    print('     -d \'{"content": "Hello, world!"}\' \\')
+    print('     -v')
     
     # Run the server
     uvicorn.run(app, host="0.0.0.0", port=8000) 
