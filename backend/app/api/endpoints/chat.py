@@ -1,312 +1,165 @@
-from typing import AsyncGenerator, Optional
-from fastapi import APIRouter, Depends, HTTPException, status
+from typing import Dict, Any, Optional, List
+from uuid import UUID
+import logging
+from pydantic import BaseModel, Field
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
-from app.core.database import get_db, Client
-from app.core.auth import get_current_user
+from sqlalchemy.ext.asyncio import AsyncSession
+from app.core.database import get_session
+from app.api.deps import get_current_user
 from app.models.user import User
-from app.models.message import create_message, MessageCreate, MessageType, Message
-from app.models.chat import (
-    ChatRequest,
-    ChatResponse,
-    ChatStreamChunk,
-    format_chat_context,
-    ChatMode,
-    ChatRole
-)
-from datetime import datetime
-import json
 from app.rag.llm import LLMProcessor
+from app.models.user_history import UserHistoryManager
 from app.core.config import settings
 import os
-import logging
-from pydantic import BaseModel, UUID4
-from typing import Dict, Any
-
-logger = logging.getLogger(__name__)
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
-class ClearChannelRequest(BaseModel):
-    channel_id: UUID4
+# Add detailed logging of environment and settings
+logger.info("Environment variables:")
+logger.info(f"OPENAI_API_KEY from env: {os.environ.get('OPENAI_API_KEY', 'Not set')[:8]}...")
+logger.info(f"OPENAI_API_KEY from settings: {settings.OPENAI_API_KEY[:8]}...")
+logger.info(f"Environment: {settings.ENVIRONMENT}")
 
-class UserSummaryRequest(BaseModel):
-    target_user_id: UUID4
-    mode: str = "direct"
+class MessageRequest(BaseModel):
+    """Request model for chat messages."""
+    content: str
+    target_user_id: str = Field(..., description="ID of the user to imitate")
+    message_id: Optional[str] = Field(default=None, description="UUID string for message context")
+    is_dm: bool = False
+    
+    @property
+    def message_uuid(self) -> Optional[UUID]:
+        """Convert message_id string to UUID if present."""
+        return UUID(self.message_id) if self.message_id else None
+    
+    @property
+    def target_user_uuid(self) -> UUID:
+        """Convert target_user_id string to UUID."""
+        return UUID(self.target_user_id)
 
-async def extract_channel_id(channel_response: Any) -> str:
-    """Extract channel_id from RPC response"""
-    try:
-        # The response is a single row with a JSONB object containing channel_id
-        if isinstance(channel_response.data, list):
-            channel_data = channel_response.data[0]
-        else:
-            channel_data = channel_response.data
-            
-        channel_id = channel_data.get('channel_id')
-        if not channel_id:
-            logger.error(f"Channel response data: {channel_data}")
-            raise ValueError("No channel_id in response")
-        return str(channel_id)
-    except Exception as e:
-        logger.error(f"Error extracting channel_id from response: {channel_response.data}")
-        raise ValueError(f"Invalid channel response: {str(e)}")
-
-async def get_or_create_dm_channel(db: Client, current_user_id: UUID4, target_user_id: UUID4) -> str:
-    """Get or create a DM channel between two users"""
-    logger.info("Creating or getting DM channel...")
-    try:
-        channel_response = db.rpc(
-            'find_or_create_dm_channel',
-            {
-                'p_user_id': str(current_user_id),
-                'p_other_user_id': str(target_user_id)
-            }
-        ).execute()
-        logger.info(f"Channel response: {channel_response.data}")
-
-        if not channel_response.data:
-            raise ValueError("Failed to get or create DM channel")
-
-        return await extract_channel_id(channel_response)
-    except Exception as e:
-        logger.error(f"Error in get_or_create_dm_channel: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(e)
-        )
-
-async def create_user_message(
-    db: Client,
-    user_id: UUID4,
-    channel_id: str,
-    content: str,
-    metadata: Optional[Dict[str, Any]] = None
-) -> Message:
-    """Create a message from a user"""
-    try:
-        message = await create_message(
-            db,
-            user_id,  # From user
-            user_id,  # Use user's profile_id
-            MessageCreate(
-                content=content,
-                channel_id=channel_id,
-                message_type=MessageType.TEXT,
-                metadata={
-                    "is_user_message": True,
-                    **(metadata or {})
-                }
-            )
-        )
-        if not message:
-            raise ValueError("Could not create user message")
-        return message
-    except Exception as e:
-        logger.error(f"Error creating user message: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(e)
-        )
-
-async def create_avatar_message(
-    db: Client,
-    target_user_id: UUID4,
-    current_user_id: UUID4,
-    channel_id: str,
-    content: str,
-    llm_response: Dict[str, Any]
-) -> Message:
-    """Create a message from an avatar"""
-    try:
-        message = await create_message(
-            db,
-            target_user_id,  # The avatar's user ID
-            target_user_id,  # The avatar's profile ID
-            MessageCreate(
-                content=content,
-                channel_id=channel_id,
-                message_type=MessageType.TEXT,
-                metadata={
-                    "is_avatar_response": True,
-                    "is_introduction": True,
-                    "model": llm_response.get("model"),
-                    "usage": llm_response.get("usage", {})
-                }
-            )
-        )
-        if not message:
-            raise ValueError("Could not create avatar message")
-        return message
-    except Exception as e:
-        logger.error(f"Error creating avatar message: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(e)
-        )
+class HistoryRequest(BaseModel):
+    """Request model for fetching user message history."""
+    target_user_id: str = Field(..., description="ID of the user to get history for")
+    is_dm: bool = False
+    limit: int = Field(default=50, ge=1, le=100, description="Maximum number of messages to return")
+    
+    @property
+    def target_user_uuid(self) -> UUID:
+        """Convert target_user_id string to UUID."""
+        return UUID(self.target_user_id)
 
 @router.post("/send")
 async def send_message(
-    request: ChatRequest,
+    message: MessageRequest,
     current_user: User = Depends(get_current_user),
-    db: Client = Depends(get_db)
-) -> ChatResponse:
-    """Send a message and get a response"""
-    logger.info(f"Processing message request from {current_user.id} to {request.target_user_id}")
-    
+    session: AsyncSession = Depends(get_session)
+) -> Dict[str, Any]:
+    """Send a message and get a response imitating the target user."""
     try:
-        # Get chat context
-        context = await format_chat_context(
-            db,
-            current_user.id,
-            request.target_user_id,
-            request.channel_id,
-            request.message_id
+        # Initialize components
+        llm = LLMProcessor(
+            api_key=settings.OPENAI_API_KEY,
+            model_name="gpt-3.5-turbo-instruct",
+            temperature=0.85
         )
-        formatted_messages = context.messages if context else []
-        logger.info(f"Chat context retrieved: {context}")
+        history_manager = UserHistoryManager(session)
         
-        # Get or create DM channel
-        channel_id = await get_or_create_dm_channel(db, current_user.id, request.target_user_id)
-        logger.info(f"Using channel_id: {channel_id}")
-
-        # Create user's message
-        user_message = await create_user_message(
-            db, 
-            current_user.id, 
-            channel_id, 
-            request.content,
-            request.metadata
+        # Get user's message history for context
+        context_data = await history_manager.get_user_context(
+            user_id=message.target_user_uuid,
+            message_id=message.message_uuid,
+            is_dm=message.is_dm,
+            limit=20  # Get more messages for better style understanding
         )
-        logger.info(f"Created user message: {user_message.id}")
-
-        # Get target user's username for response
-        target_user_response = db.from_("profiles").select("username").eq("id", str(request.target_user_id)).single().execute()
-        if not target_user_response.data:
+        
+        if not context_data["chunks"]:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Target user profile not found"
+                status_code=404,
+                detail=f"No message history found for user {message.target_user_id}"
             )
-        target_username = target_user_response.data["username"]
-        logger.info(f"Target username: {target_username}")
-
-        # Generate response using LLM
-        llm_processor = LLMProcessor(api_key=settings.OPENAI_API_KEY)
-        llm_response = await llm_processor.generate_rag_response(
-            query=request.content,
-            context=formatted_messages,
-            username=target_username
+        
+        # Use the full context for better style imitation
+        context = context_data["chunks"][0]["content"]
+        username = context_data["chunks"][0]["metadata"]["username"]
+        
+        # Generate response
+        response = await llm.generate_rag_response(
+            query=message.content,
+            context=context,
+            username=username
         )
-        logger.info("Generated LLM response")
-
-        # Create avatar's response message
-        avatar_message = await create_avatar_message(
-            db,
-            request.target_user_id,
-            current_user.id,  # Pass current user's ID for profile_id
-            channel_id,
-            llm_response["content"],
-            llm_response
-        )
-        logger.info(f"Created avatar message: {avatar_message.id}")
-
-        # Return the avatar's response
-        return ChatResponse(
-            message_id=avatar_message.id,
-            content=avatar_message.content,
-            role=ChatRole.ASSISTANT,
-            created_at=avatar_message.inserted_at or datetime.utcnow(),
-            metadata=avatar_message.metadata
-        )
-
-    except HTTPException:
-        raise
+        
+        return response
     except Exception as e:
-        logger.error(f"Error in send_message: {str(e)}")
+        logger.error(f"Error processing message: {str(e)}")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(e)
+            status_code=500,
+            detail=f"Error processing message: {str(e)}"
         )
 
-@router.post("/user_summary")
-async def get_user_summary(
-    request: UserSummaryRequest,
+@router.post("/stream")
+async def stream_message(
+    message: MessageRequest,
     current_user: User = Depends(get_current_user),
-    db: Client = Depends(get_db)
-) -> ChatResponse:
-    """Get a summary of interactions with a user"""
-    logger.info(f"Getting user summary for {request.target_user_id}")
-    
+    session: AsyncSession = Depends(get_session)
+) -> StreamingResponse:
+    """Stream a message response imitating the target user."""
     try:
-        # Get chat context
-        context = await format_chat_context(
-            db,
-            current_user.id,
-            request.target_user_id,
-            None,  # No specific channel
-            None   # No specific message
+        # Initialize components
+        llm = LLMProcessor(
+            api_key=settings.OPENAI_API_KEY,
+            model_name="gpt-3.5-turbo-instruct",
+            temperature=0.85
         )
-        formatted_messages = context.messages if context else []
-        logger.info(f"Chat context retrieved: {context}")
-
-        # Get or create DM channel
-        channel_id = await get_or_create_dm_channel(db, current_user.id, request.target_user_id)
-        logger.info(f"Using channel_id: {channel_id}")
-
-        # Get target user's username
-        target_user_response = db.from_("profiles").select("username").eq("id", str(request.target_user_id)).single().execute()
-        if not target_user_response.data:
+        history_manager = UserHistoryManager(session)
+        
+        # Get user's message history for context
+        context_data = await history_manager.get_user_context(
+            user_id=message.target_user_uuid,
+            message_id=message.message_uuid,
+            is_dm=message.is_dm,
+            limit=20  # Get more messages for better style understanding
+        )
+        
+        if not context_data["chunks"]:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Target user profile not found"
+                status_code=404,
+                detail=f"No message history found for user {message.target_user_id}"
             )
-        target_username = target_user_response.data["username"]
-        logger.info(f"Target username: {target_username}")
-
-        # Generate summary using LLM
-        llm_processor = LLMProcessor(api_key=settings.OPENAI_API_KEY)
-        llm_response = await llm_processor.generate_user_summary(
-            context=formatted_messages,
-            username=target_username
+        
+        # Use the full context for better style imitation
+        context = context_data["chunks"][0]["content"]
+        username = context_data["chunks"][0]["metadata"]["username"]
+        
+        # Generate streaming response
+        stream = llm.generate_stream_response(
+            query=message.content,
+            context=context,
+            username=username
         )
-        logger.info("Generated user summary")
-
-        # Create avatar's summary message
-        avatar_message = await create_avatar_message(
-            db,
-            request.target_user_id,
-            current_user.id,
-            channel_id,
-            llm_response["content"],
-            llm_response
+        
+        return StreamingResponse(
+            stream,
+            media_type="text/event-stream"
         )
-        logger.info(f"Created summary message: {avatar_message.id}")
-
-        # Return the summary response
-        return ChatResponse(
-            message_id=avatar_message.id,
-            content=avatar_message.content,
-            role=ChatRole.ASSISTANT,
-            created_at=avatar_message.inserted_at or datetime.utcnow(),
-            metadata=avatar_message.metadata
-        )
-
-    except HTTPException:
-        raise
     except Exception as e:
-        logger.error(f"Error in get_user_summary: {str(e)}")
+        logger.error(f"Error processing message: {str(e)}")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(e)
+            status_code=500,
+            detail=f"Error processing message: {str(e)}"
         )
 
-@router.post("/clear")
-async def clear_messages(
-    request: ClearChannelRequest,
+@router.post("/history")
+async def get_user_history(
+    request: HistoryRequest,
     current_user: User = Depends(get_current_user),
-    db: Client = Depends(get_db)
-) -> dict:
-    """Clear all messages in a channel"""
+    session: AsyncSession = Depends(get_session)
+) -> Dict[str, Any]:
+    """Get message history for a specific user."""
     try:
+<<<<<<< HEAD
         # Get current timestamp for soft delete
         now = datetime.utcnow().isoformat()
 
@@ -316,14 +169,55 @@ async def clear_messages(
             .eq("channel_id", str(request.channel_id))\
             .filter("deleted_at", "is", "null")\
             .execute()
+=======
+        logger.info(f"Fetching history for user {request.target_user_id}")
+        history_manager = UserHistoryManager(session)
+        
+        try:
+            messages = await history_manager.get_user_messages(
+                user_id=request.target_user_uuid,
+                limit=request.limit,
+                is_dm=request.is_dm
+            )
+        except Exception as e:
+            logger.error(f"Error in get_user_messages: {str(e)}")
+            logger.exception(e)
+            raise
+        
+        logger.info(f"Found {len(messages)} messages")
+        
+        # Transform messages into the format expected by the frontend
+        formatted_messages = []
+        try:
+            for msg in messages:
+                formatted_messages.append({
+                    "content": msg["content"],
+                    "sender": {
+                        "id": str(request.target_user_uuid),
+                        "username": msg["metadata"]["username"]
+                    },
+                    "created_at": msg["metadata"]["timestamp"],
+                    "id": msg["metadata"]["message_id"]
+                })
+        except Exception as e:
+            logger.error(f"Error formatting messages: {str(e)}")
+            logger.error(f"Message that caused error: {msg}")
+            logger.exception(e)
+            raise HTTPException(
+                status_code=500,
+                detail=f"Error formatting messages: {str(e)}"
+            )
+>>>>>>> 5b6fbe7e4dd5bb01e4c8c5c98fe126e78fe44646
         
         return {
-            "status": "success",
-            "message": "Messages cleared successfully"
+            "messages": formatted_messages,
+            "total": len(formatted_messages)
         }
+        
     except Exception as e:
-        logger.error(f"Error in clear_messages: {str(e)}")
+        logger.error(f"Error fetching user history: {str(e)}")
+        logger.exception(e)
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(e)
+            status_code=500,
+            detail=f"Error fetching user history: {str(e)}"
         ) 

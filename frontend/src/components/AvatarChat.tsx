@@ -6,6 +6,7 @@ import { User } from '../types/models';
 import { useAuth } from '../hooks/useAuth';
 import { useDirectMessages } from '../hooks/useDirectMessages';
 import { supabase } from '../lib/supabaseClient';
+import { MessageWithUser } from '../types/models';
 
 interface AvatarChatProps {
   className?: string;
@@ -28,6 +29,31 @@ interface MessageSender {
   full_name: string;
 }
 
+interface MessageDBResponse {
+  content: string;
+  inserted_at: string;
+  profiles: {
+    username: string;
+  }[];
+}
+
+interface Message {
+  id: string;
+  content: string;
+  created_at: string;
+  metadata?: {
+    is_avatar_response?: boolean;
+    is_introduction?: boolean;
+  };
+}
+
+interface UseRealtimeMessagesResult {
+  messages: MessageWithUser[];
+  isLoading: boolean;
+  error: Error | null;
+  sendMessage: (message: string) => Promise<void>;
+}
+
 export function AvatarChat({ className = '' }: AvatarChatProps) {
   const [targetUser, setTargetUser] = useState<TargetUser | null>(null);
   const [messageId, setMessageId] = useState<string | null>(null);
@@ -42,7 +68,7 @@ export function AvatarChat({ className = '' }: AvatarChatProps) {
     isLoading: messagesIsLoading,
     error: messagesError,
     sendMessage
-  } = useRealtimeMessages({
+  }: UseRealtimeMessagesResult = useRealtimeMessages({
     channelId: targetUser?.channelId || '',
     chatType: 'dm'  // Always use DM mode
   });
@@ -66,7 +92,7 @@ export function AvatarChat({ className = '' }: AvatarChatProps) {
           content: messages[messages.length - 1].content?.substring(0, 50),
           created_at: messages[messages.length - 1].created_at
         } : null,
-        allMessageIds: messages.map(m => ({
+        allMessageIds: messages.map((m: Message) => ({
           id: m.id,
           content: m.content?.substring(0, 50),
           created_at: m.created_at,
@@ -82,18 +108,18 @@ export function AvatarChat({ className = '' }: AvatarChatProps) {
     try {
       const { data, error } = await supabase
         .from('messages')
-        .select('content, inserted_at')
+        .select('content, inserted_at, profiles(username)')
         .eq('user_id', userId)
         .order('inserted_at', { ascending: false })
-        .limit(50);
+        // .limit(50);
 
       if (error) throw error;
       
       // Convert the data to match MessageHistory interface
-      const formattedData: MessageHistory[] = (data || []).map(msg => ({
+      const formattedData: MessageHistory[] = ((data || []) as MessageDBResponse[]).map(msg => ({
         content: msg.content,
         created_at: msg.inserted_at,
-        username: msg.inserted_at
+        username: msg.profiles[0]?.username || 'unknown'
       }));
       
       setMessageHistory(formattedData);

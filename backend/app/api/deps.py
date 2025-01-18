@@ -1,27 +1,29 @@
-from typing import Annotated
-from fastapi import Depends, HTTPException, status, Request
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from typing import Annotated, AsyncGenerator
+from fastapi import Depends, HTTPException, status
+from fastapi.security import OAuth2PasswordBearer
+import jwt  # Using python-jwt instead of python-jose
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from datetime import datetime, timedelta
 from app.core.config import settings
 from app.core.database import get_session
 from app.models.user import User
-from supabase import create_client, Client
+import logging
 
-security = HTTPBearer()
+logger = logging.getLogger(__name__)
 
-def get_supabase() -> Client:
-    """Get a Supabase client instance."""
-    return create_client(
-        settings.SUPABASE_URL,
-        settings.SUPABASE_SERVICE_KEY
-    )
+# JWT configuration
+SECRET_KEY = settings.SECRET_KEY  # Use Supabase JWT secret for token validation
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = settings.ACCESS_TOKEN_EXPIRE_MINUTES
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
 async def get_current_user(
-    credentials: Annotated[HTTPAuthorizationCredentials, Depends(security)],
+    token: Annotated[str, Depends(oauth2_scheme)],
     session: AsyncSession = Depends(get_session)
 ) -> User:
-    """Get the current user from the Supabase JWT token."""
+    """Get the current user from the token."""
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -29,15 +31,71 @@ async def get_current_user(
     )
     
     try:
-        # Get user from database using email
-        stmt = select(User).where(User.email == credentials.credentials)
-        result = await session.execute(stmt)
-        db_user = result.scalar_one_or_none()
+        # Log token details for debugging
+        logger.debug("Attempting to decode JWT token")
+        logger.debug(f"Using secret key: {SECRET_KEY[:10]}...")  # Only log first 10 chars for security
+        logger.debug(f"Token: {token[:20]}...")  # Only log first 20 chars for security
         
-        if db_user is None:
-            raise credentials_exception
+        # Decode the Supabase JWT token
+        payload = jwt.decode(
+            token, 
+            SECRET_KEY, 
+            algorithms=[ALGORITHM],
+            verify=True,
+            options={
+                "verify_aud": False,  # Disable audience verification
+                "verify_signature": True  # Ensure signature verification is enabled
+            }
+        )
+        
+        logger.debug(f"JWT payload: {payload}")
+        
+        # Extract user info from Supabase claims
+        sub = payload.get("sub")  # This is the user's UUID in Supabase
+        email = payload.get("email")
+        
+        if not sub:
+            # For Supabase tokens, user info might be in different claims
+            sub = payload.get("user_id") or payload.get("uid")
+            if not sub:
+                logger.error("Missing user identifier in JWT payload")
+                raise credentials_exception
             
-        return db_user
-        
-    except Exception as e:
-        raise credentials_exception 
+            # Get email from user metadata if available
+            user_metadata = payload.get("user_metadata", {})
+            email = user_metadata.get("email")
+            if not email:
+                email = f"{sub}@example.com"  # Fallback email if not provided
+            
+    except jwt.InvalidTokenError as e:
+        logger.error(f"JWT validation error: {str(e)}")
+        raise credentials_exception
+    
+    # Get user from database using Supabase user ID
+    stmt = select(User).where(User.id == sub)
+    result = await session.execute(stmt)
+    user = result.scalar_one_or_none()
+    
+    if user is None:
+        # Create user if they don't exist
+        user = User(
+            id=sub,
+            email=email,
+            is_active=True
+        )
+        session.add(user)
+        await session.commit()
+        logger.info(f"Created new user with ID {sub}")
+    
+    return user
+
+def create_access_token(data: dict, expires_delta: timedelta | None = None) -> str:
+    """Create a new access token."""
+    to_encode = data.copy()
+    if expires_delta:
+        expire = datetime.utcnow() + expires_delta
+    else:
+        expire = datetime.utcnow() + timedelta(minutes=15)
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return encoded_jwt 
