@@ -1,13 +1,14 @@
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Annotated
 from uuid import UUID
 import logging
 from pydantic import BaseModel, Field
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.core.database import get_session
+from supabase import Client
+from app.core.database import get_db, get_session
 from app.api.deps import get_current_user
-from app.models.user import User
+from app.models.user import User, get_user_by_id
 from app.rag.llm import LLMProcessor
 from app.models.user_history import UserHistoryManager
 from app.core.config import settings
@@ -21,6 +22,15 @@ logger.info("Environment variables:")
 logger.info(f"OPENAI_API_KEY from env: {os.environ.get('OPENAI_API_KEY', 'Not set')[:8]}...")
 logger.info(f"OPENAI_API_KEY from settings: {settings.OPENAI_API_KEY[:8]}...")
 logger.info(f"Environment: {settings.ENVIRONMENT}")
+
+class UserSummaryRequest(BaseModel):
+    """Request model for user summary."""
+    target_user_id: str = Field(..., description="ID of the user to get summary for")
+    
+    @property
+    def target_user_uuid(self) -> UUID:
+        """Convert target_user_id string to UUID."""
+        return UUID(self.target_user_id)
 
 class MessageRequest(BaseModel):
     """Request model for chat messages."""
@@ -49,6 +59,60 @@ class HistoryRequest(BaseModel):
     def target_user_uuid(self) -> UUID:
         """Convert target_user_id string to UUID."""
         return UUID(self.target_user_id)
+
+@router.post("/user_summary")
+async def get_user_summary(
+    request: UserSummaryRequest,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Client, Depends(get_db)]
+) -> Dict[str, Any]:
+    """Get a summary of the target user's profile and recent activity."""
+    try:
+        # Get user profile
+        target_user = await get_user_by_id(db, request.target_user_uuid)
+        if not target_user:
+            raise HTTPException(
+                status_code=404,
+                detail=f"User {request.target_user_id} not found"
+            )
+            
+        # Get user's recent messages
+        history_manager = UserHistoryManager(db)
+        messages = await history_manager.get_user_messages(
+            user_id=request.target_user_uuid,
+            limit=10,  # Get last 10 messages
+            is_dm=False
+        )
+        
+        # Format the response
+        return {
+            "user": {
+                "id": str(target_user.id),
+                "username": target_user.username,
+                "full_name": target_user.full_name,
+                "status": target_user.status,
+                "last_seen": target_user.last_seen,
+                "avatar_url": target_user.avatar_url
+            },
+            "recent_messages": [
+                {
+                    "content": msg["content"],
+                    "created_at": msg["metadata"]["timestamp"],
+                    "id": msg["metadata"]["message_id"]
+                }
+                for msg in messages
+            ] if messages else []
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting user summary: {str(e)}")
+        logger.exception(e)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error getting user summary: {str(e)}"
+        )
 
 @router.post("/send")
 async def send_message(
