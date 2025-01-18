@@ -23,8 +23,9 @@ def get_jwt_secret():
         return None
         
     try:
-        # Try to decode as base64
-        decoded = base64.b64decode(secret)
+        # Add maximum padding and let b64decode handle truncation
+        padded_secret = secret + "==="
+        decoded = base64.b64decode(padded_secret)
         logger.info("Successfully decoded base64 JWT secret")
         return decoded
     except Exception as e:
@@ -65,9 +66,10 @@ async def get_current_user(
             if len(parts) == 3:
                 header, payload, signature = parts
                 logger.debug(f"Token structure - Header: {header[:10]}... Payload: {payload[:10]}... Signature: {signature[:10]}...")
+                
                 # Decode payload without verification for debugging
-                padded_payload = payload + '=' * (-len(payload) % 4)
-                decoded_payload = base64.b64decode(padded_payload)
+                # Add maximum padding and let b64decode handle truncation
+                decoded_payload = base64.b64decode(payload + "===")
                 payload_data = json.loads(decoded_payload)
                 logger.debug(f"Raw payload data: {payload_data}")
             
