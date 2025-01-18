@@ -343,37 +343,38 @@ export function useRealtimeMessages({
     const MAX_RECONNECT_ATTEMPTS = 5;
     const RECONNECT_INTERVAL = 2000; // 2 seconds
 
-    // Clean up any existing subscription before creating a new one
-    const cleanup = () => {
-      if (subscriptionRef.current) {
-        console.log('Cleaning up existing subscription:', subscriptionRef.current.topic);
-        subscriptionRef.current.unsubscribe();
-        supabase.removeChannel(subscriptionRef.current);
-        subscriptionRef.current = null;
+    // Clean up any existing subscription
+    if (subscriptionRef.current) {
+      console.log('Cleaning up existing subscription:', subscriptionId);
+      subscriptionRef.current.unsubscribe();
+      supabase.removeChannel(subscriptionRef.current);
+      subscriptionRef.current = null;
+    }
+
+    // Clean up all other channels before creating a new one
+    console.log('Cleaning up all existing channels...');
+    supabase.getChannels().forEach(ch => {
+      if (ch.topic !== subscriptionId) {
+        console.log('Removing channel:', ch.topic);
+        supabase.removeChannel(ch);
       }
-    };
+    });
 
-    const setupSubscription = () => {
-      cleanup();
+    console.log('Setting up realtime subscription:', {
+      table,
+      channelId,
+      subscriptionId,
+      chatType,
+      existingChannels: supabase.getChannels().length
+    });
 
-      console.log('Setting up new realtime subscription:', {
-        table,
-        channelId,
-        subscriptionId,
-        chatType,
-        timestamp: new Date().toISOString(),
-        attempt: reconnectAttempts + 1
-      });
+    let retryCount = 0;
+    const maxRetries = 3;
+    const setupChannel = () => {
+      if (!isCurrentSubscription) return;
 
       const channel = supabase
-        .channel(subscriptionId, {
-          config: {
-            broadcast: { ack: true },
-            presence: { key: user.id },
-            retryAfter: 2000,
-            timeout: 30000
-          }
-        })
+        .channel(subscriptionId)
         .on(
           'postgres_changes',
           {
@@ -384,7 +385,7 @@ export function useRealtimeMessages({
           },
           async (payload: RealtimePostgresChangesPayload<any>) => {
             if (!isCurrentSubscription) {
-              console.log('Ignoring event for old subscription:', subscriptionId);
+              console.log('Ignoring event for old subscription');
               return;
             }
 
@@ -468,13 +469,29 @@ export function useRealtimeMessages({
                   console.log('Updated messages after INSERT:', {
                     previousCount: prev.length,
                     newCount: updated.length,
-                    messageId: processedMessage.id
+                    messageId: processedMessage.id,
+                    lastMessage: updated[updated.length - 1],
+                    allMessageIds: updated.map(m => m.id),
+                    messageTimestamps: updated.map(m => ({
+                      id: m.id,
+                      created_at: m.created_at,
+                      inserted_at: m.inserted_at
+                    }))
                   });
                   return updated;
                 } else if (eventType === 'UPDATE') {
-                  return prev.map(msg => 
-                    msg.id === processedMessage.id ? processedMessage : msg
-                  );
+                  const existing = prev.findIndex(msg => msg.id === processedMessage.id);
+                  if (existing >= 0) {
+                    const updated = [...prev];
+                    updated[existing] = processedMessage;
+                    console.log('Updated existing message:', {
+                      messageId: processedMessage.id,
+                      content: processedMessage.content,
+                      timestamp: processedMessage.created_at || processedMessage.inserted_at
+                    });
+                    return updated;
+                  }
+                  return prev;
                 }
                 return prev;
               });
@@ -483,67 +500,45 @@ export function useRealtimeMessages({
             }
           }
         )
-        .subscribe(async (status, err) => {
+        .subscribe((status, err) => {
           if (!isCurrentSubscription) return;
-          
-          console.log('Subscription status update:', {
-            status,
-            error: err,
-            channelId,
-            subscriptionId,
-            timestamp: new Date().toISOString()
-          });
-
-          // Handle timeout by resubscribing
-          if (status === 'TIMED_OUT') {
-            console.log('Subscription timed out, resubscribing...');
-            channel.unsubscribe();
-            setTimeout(() => {
-              if (isCurrentSubscription) {
-                channel.subscribe();
-              }
-            }, 1000);
-          }
-
+            
           if (err) {
-            console.error('Subscription error:', {
-              error: err,
-              channelId,
-              subscriptionId
-            });
-
-            if (err.message?.includes('Too many channels')) {
-              console.log('Too many channels, cleaning up and retrying...');
-              // Clean up all channels except the current one
+            console.error('Message subscription error:', err);
+            if (err.message?.includes('Too many channels') && retryCount < maxRetries) {
+              console.log(`Retry attempt ${retryCount + 1} of ${maxRetries}`);
+              retryCount++;
+              
+              // Clean up all channels
               supabase.getChannels().forEach(ch => {
-                if (ch.topic !== subscriptionId) {
-                  supabase.removeChannel(ch);
-                }
+                supabase.removeChannel(ch);
               });
               
-              // Retry subscription
+              // Wait before retrying
               setTimeout(() => {
                 if (isCurrentSubscription) {
-                  console.log('Retrying subscription after cleanup:', subscriptionId);
-                  setupSubscription();
+                  setupChannel();
                 }
-              }, 1000);
+              }, 1000 * retryCount); // Exponential backoff
             }
+          } else {
+            console.log('Subscription status:', status);
+            retryCount = 0; // Reset retry count on successful subscription
           }
         });
 
-      // Store the subscription reference
       subscriptionRef.current = channel;
     };
 
-    // Initial subscription setup
-    setupSubscription();
+    setupChannel();
 
-    // Cleanup function
     return () => {
       console.log('Cleaning up subscription on unmount:', subscriptionId);
       isCurrentSubscription = false;
-      cleanup();
+      if (subscriptionRef.current) {
+        subscriptionRef.current.unsubscribe();
+        supabase.removeChannel(subscriptionRef.current);
+      }
     };
   }, [user, channelId, chatType, updateMessages]);
 

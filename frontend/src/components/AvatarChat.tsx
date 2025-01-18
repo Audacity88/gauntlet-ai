@@ -6,6 +6,7 @@ import { User } from '../types/models';
 import { useAuth } from '../hooks/useAuth';
 import { useDirectMessages } from '../hooks/useDirectMessages';
 import { supabase } from '../lib/supabaseClient';
+import { MessageWithUser } from '../types/models';
 
 interface AvatarChatProps {
   className?: string;
@@ -36,6 +37,23 @@ interface MessageDBResponse {
   }[];
 }
 
+interface Message {
+  id: string;
+  content: string;
+  created_at: string;
+  metadata?: {
+    is_avatar_response?: boolean;
+    is_introduction?: boolean;
+  };
+}
+
+interface UseRealtimeMessagesResult {
+  messages: MessageWithUser[];
+  isLoading: boolean;
+  error: Error | null;
+  sendMessage: (message: string) => Promise<void>;
+}
+
 export function AvatarChat({ className = '' }: AvatarChatProps) {
   const [targetUser, setTargetUser] = useState<TargetUser | null>(null);
   const [messageId, setMessageId] = useState<string | null>(null);
@@ -50,34 +68,40 @@ export function AvatarChat({ className = '' }: AvatarChatProps) {
     isLoading: messagesIsLoading,
     error: messagesError,
     sendMessage
-  } = useRealtimeMessages({
+  }: UseRealtimeMessagesResult = useRealtimeMessages({
     channelId: targetUser?.channelId || '',
     chatType: 'dm'  // Always use DM mode
   });
 
-  // Find the most recent summary message
-  const latestSummary = messages?.find(msg => 
-    msg.metadata?.is_avatar_response && 
-    msg.metadata?.is_introduction
-  );
-
-  // Filter messages to show all messages
+  // No need to track latest summary since we're showing all messages
   const displayMessages = messages;
 
-  // Debug logging for message filtering
+  // Debug logging for message display
   useEffect(() => {
     if (messages?.length) {
-      console.log('Message filtering debug:', {
+      console.log('Message display debug:', {
         totalMessages: messages.length,
         displayedMessages: displayMessages?.length,
-        latestSummaryId: latestSummary?.id,
-        latestSummaryTime: latestSummary?.created_at,
-        firstMessageTime: messages[0]?.created_at,
-        lastMessageTime: messages[messages.length - 1]?.created_at,
-        allMessageIds: messages.map(m => m.id)
+        firstMessage: messages[0] ? {
+          id: messages[0].id,
+          content: messages[0].content?.substring(0, 50),
+          created_at: messages[0].created_at
+        } : null,
+        lastMessage: messages[messages.length - 1] ? {
+          id: messages[messages.length - 1].id,
+          content: messages[messages.length - 1].content?.substring(0, 50),
+          created_at: messages[messages.length - 1].created_at
+        } : null,
+        allMessageIds: messages.map((m: Message) => ({
+          id: m.id,
+          content: m.content?.substring(0, 50),
+          created_at: m.created_at,
+          is_avatar_response: m.metadata?.is_avatar_response,
+          is_introduction: m.metadata?.is_introduction
+        }))
       });
     }
-  }, [messages, displayMessages, latestSummary]);
+  }, [messages, displayMessages]);
 
   // Fetch user's message history when selected
   const fetchMessageHistory = useCallback(async (userId: string) => {
@@ -112,7 +136,7 @@ export function AvatarChat({ className = '' }: AvatarChatProps) {
       setMessageHistory([]); // Reset message history
       setChatError(null);
 
-      // Fetch user's message history first
+      // Fetch the user's public message history
       await fetchMessageHistory(user.id);
 
       // Create or get existing DM channel
@@ -123,6 +147,13 @@ export function AvatarChat({ className = '' }: AvatarChatProps) {
       if (sessionError || !session?.access_token) {
         throw new Error('No active session or missing access token');
       }
+
+      // Debug token format
+      console.log('Token debug:', {
+        tokenLength: session.access_token.length,
+        tokenParts: session.access_token.split('.').length,
+        tokenStart: session.access_token.substring(0, 20) + '...',
+      });
 
       // Check if there's already an introduction message for this user
       const { data: existingMessages, error: messagesError } = await supabase
@@ -143,15 +174,40 @@ export function AvatarChat({ className = '' }: AvatarChatProps) {
       if (!existingMessages?.length) {
         console.log('No existing introduction found, requesting user summary...');
         
+        // Get messages from the public messages table
+        const { data: publicMessages, error: publicMessagesError } = await supabase
+          .from('messages')
+          .select('content, inserted_at, id')
+          .eq('user_id', user.id)
+          .order('inserted_at', { ascending: false })
+          .limit(50);
+
+        if (publicMessagesError) {
+          console.error('Error fetching public messages:', publicMessagesError);
+          throw publicMessagesError;
+        }
+
+        // Format messages for the API
+        const formattedMessages = (publicMessages || []).map(msg => ({
+          content: msg.content,
+          metadata: {
+            username: user.username,
+            timestamp: msg.inserted_at,
+            channel: 'channel',
+            message_id: msg.id
+          }
+        }));
+        
         // Make API request to get user summary
         const requestBody = {
           target_user_id: user.id,
           mode: 'direct',
-          message_history: messageHistory // Include message history in the request
+          message_history: formattedMessages
         };
         console.log('Sending user summary request:', requestBody);
         
-        const response = await fetch('http://localhost:8000/api/chat/user_summary', {
+        const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+        const response = await fetch(`${API_BASE_URL}/api/chat/user_summary`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -186,7 +242,7 @@ export function AvatarChat({ className = '' }: AvatarChatProps) {
     } finally {
       setIsLoading(false);
     }
-  }, [createDirectMessage, fetchMessageHistory, messageHistory]);
+  }, [createDirectMessage, fetchMessageHistory]);
 
   const formatMessageHistory = useCallback((messages: MessageHistory[]) => {
     return messages.map(msg => ({
@@ -214,6 +270,13 @@ export function AvatarChat({ className = '' }: AvatarChatProps) {
         throw new Error('No active session or missing access token')
       }
 
+      // Debug token format
+      console.log('Send message token debug:', {
+        tokenLength: session.access_token.length,
+        tokenParts: session.access_token.split('.').length,
+        tokenStart: session.access_token.substring(0, 20) + '...',
+      });
+
       // Log token details for debugging
       console.log('Making avatar API request:', {
         tokenLength: session.access_token.length,
@@ -222,8 +285,9 @@ export function AvatarChat({ className = '' }: AvatarChatProps) {
         historyLength: messageHistory.length
       })
 
+      const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
       // Make API request to get avatar's response - this will also create the user's message
-      const response = await fetch('http://localhost:8000/api/chat/send', {
+      const response = await fetch(`${API_BASE_URL}/api/chat/send`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -309,7 +373,7 @@ export function AvatarChat({ className = '' }: AvatarChatProps) {
       }
 
       // Call the API to clear test user's messages
-      const response = await fetch('http://localhost:8000/api/chat/clear', {
+      const response = await fetch('${API_BASE_URL}/api/chat/clear', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -381,7 +445,7 @@ export function AvatarChat({ className = '' }: AvatarChatProps) {
                 <p>Target: {targetUser?.username || 'Not set'}</p>
                 <p>Message ID: {messageId || 'None'}</p>
                 <p>History: {messageHistory.length} messages</p>
-                <p>Summary: {latestSummary ? 'Available' : 'None'}</p>
+                <p>AI Messages: {messages?.length || 0} total</p>
                 {isLoading && <p className="text-indigo-600">Loading user summary...</p>}
                 {chatError && <p className="text-red-500">Error: {chatError}</p>}
               </div>
