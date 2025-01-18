@@ -47,17 +47,35 @@ export function AvatarChat({ className = '' }: AvatarChatProps) {
     chatType: 'dm'  // Always use DM mode
   });
 
-  // Find the most recent summary message
-  const latestSummary = messages?.find(msg => 
-    msg.metadata?.is_avatar_response && 
-    msg.metadata?.is_introduction
-  );
+  // No need to track latest summary since we're showing all messages
+  const displayMessages = messages;
 
-  // Filter messages to only show those after the summary
-  const displayMessages = messages?.filter(msg => {
-    if (!latestSummary) return true;
-    return new Date(msg.created_at) >= new Date(latestSummary.created_at);
-  });
+  // Debug logging for message display
+  useEffect(() => {
+    if (messages?.length) {
+      console.log('Message display debug:', {
+        totalMessages: messages.length,
+        displayedMessages: displayMessages?.length,
+        firstMessage: messages[0] ? {
+          id: messages[0].id,
+          content: messages[0].content?.substring(0, 50),
+          created_at: messages[0].created_at
+        } : null,
+        lastMessage: messages[messages.length - 1] ? {
+          id: messages[messages.length - 1].id,
+          content: messages[messages.length - 1].content?.substring(0, 50),
+          created_at: messages[messages.length - 1].created_at
+        } : null,
+        allMessageIds: messages.map(m => ({
+          id: m.id,
+          content: m.content?.substring(0, 50),
+          created_at: m.created_at,
+          is_avatar_response: m.metadata?.is_avatar_response,
+          is_introduction: m.metadata?.is_introduction
+        }))
+      });
+    }
+  }, [messages, displayMessages]);
 
   // Fetch user's message history when selected
   const fetchMessageHistory = useCallback(async (userId: string) => {
@@ -357,7 +375,7 @@ export function AvatarChat({ className = '' }: AvatarChatProps) {
                 <p>Target: {targetUser?.username || 'Not set'}</p>
                 <p>Message ID: {messageId || 'None'}</p>
                 <p>History: {messageHistory.length} messages</p>
-                <p>Summary: {latestSummary ? 'Available' : 'None'}</p>
+                <p>Messages: {messages?.length || 0} total</p>
                 {isLoading && <p className="text-indigo-600">Loading user summary...</p>}
                 {chatError && <p className="text-red-500">Error: {chatError}</p>}
               </div>

@@ -52,4 +52,4 @@ async def get_db() -> AsyncGenerator[Client, None]:
         yield supabase
     finally:
         # No need to close the client after each request
-        pass 
+        pass

@@ -348,12 +348,27 @@ export function useRealtimeMessages({
       subscriptionRef.current = null;
     }
 
+    // Clean up all other channels before creating a new one
+    console.log('Cleaning up all existing channels...');
+    supabase.getChannels().forEach(ch => {
+      if (ch.topic !== subscriptionId) {
+        console.log('Removing channel:', ch.topic);
+        supabase.removeChannel(ch);
+      }
+    });
+
     console.log('Setting up realtime subscription:', {
       table,
       channelId,
       subscriptionId,
-      chatType
+      chatType,
+      existingChannels: supabase.getChannels().length
     });
+
+    let retryCount = 0;
+    const maxRetries = 3;
+    const setupChannel = () => {
+      if (!isCurrentSubscription) return;
 
     const channel = supabase
       .channel(subscriptionId)
@@ -464,7 +479,13 @@ export function useRealtimeMessages({
                     previousCount: prev.length,
                     newCount: updated.length,
                     messageId: processedMessage.id,
-                    lastMessage: updated[updated.length - 1]
+                    lastMessage: updated[updated.length - 1],
+                    allMessageIds: updated.map(m => m.id),
+                    messageTimestamps: updated.map(m => ({
+                      id: m.id,
+                      created_at: m.created_at,
+                      inserted_at: m.inserted_at
+                    }))
                   });
                   return updated;
                 });
@@ -474,7 +495,11 @@ export function useRealtimeMessages({
                   if (existing >= 0) {
                     const updated = [...prev];
                     updated[existing] = processedMessage;
-                    console.log('Updated existing message:', processedMessage.id);
+                    console.log('Updated existing message:', {
+                      messageId: processedMessage.id,
+                      content: processedMessage.content,
+                      timestamp: processedMessage.created_at || processedMessage.inserted_at
+                    });
                     return updated;
                   }
                   return prev;
@@ -488,33 +513,38 @@ export function useRealtimeMessages({
       )
       .subscribe((status, err) => {
         if (!isCurrentSubscription) return;
+          
         if (err) {
           console.error('Message subscription error:', err);
-          // If we get a "Too many channels" error, try to clean up and retry
-          if (err.message?.includes('Too many channels')) {
-            console.log('Too many channels, cleaning up and retrying...');
-            // Clean up all channels except the current one
+            if (err.message?.includes('Too many channels') && retryCount < maxRetries) {
+              console.log(`Retry attempt ${retryCount + 1} of ${maxRetries}`);
+              retryCount++;
+              
+              // Clean up all channels
             supabase.getChannels().forEach(ch => {
-              if (ch.topic !== subscriptionId) {
                 supabase.removeChannel(ch);
-              }
             });
-            // Retry subscription after cleanup
+              
+              // Wait before retrying
             setTimeout(() => {
               if (isCurrentSubscription) {
-                channel.subscribe();
+                  setupChannel();
               }
-            }, 1000);
+              }, 1000 * retryCount); // Exponential backoff
           }
         } else {
           console.log('Subscription status:', status);
+            retryCount = 0; // Reset retry count on successful subscription
         }
       });
 
-    // Store the subscription reference
     subscriptionRef.current = channel;
+    };
+
+    setupChannel();
 
     return () => {
+      console.log('Cleaning up subscription on unmount:', subscriptionId);
       isCurrentSubscription = false;
       if (subscriptionRef.current) {
         subscriptionRef.current.unsubscribe();

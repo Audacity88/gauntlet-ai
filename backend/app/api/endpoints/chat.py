@@ -316,7 +316,7 @@ async def clear_messages(
             .eq("channel_id", str(request.channel_id))\
             .filter("deleted_at", "is", "null")\
             .execute()
-
+        
         return {
             "status": "success",
             "message": "Messages cleared successfully"
