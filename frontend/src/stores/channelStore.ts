@@ -104,8 +104,7 @@ export const useChannelStore = create<ChannelState>()(
             
             let newChannels: ChannelWithDetails[];
             if (typeof channelsOrUpdater === 'function') {
-              const currentChannels = Array.from(state.channels.values());
-              newChannels = channelsOrUpdater(currentChannels);
+              newChannels = channelsOrUpdater(state.channels);
             } else {
               newChannels = channelsOrUpdater;
             }
