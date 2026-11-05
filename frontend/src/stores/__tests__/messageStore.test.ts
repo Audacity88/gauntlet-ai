@@ -9,6 +9,7 @@ describe('Message Store', () => {
     updated_at: new Date().toISOString(),
     channel_id: 'channel1',
     user_id: 'user1',
+    message_type: 'text',
     user: {
       id: 'user1',
       username: 'testuser',
